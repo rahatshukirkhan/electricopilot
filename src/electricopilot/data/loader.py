@@ -159,9 +159,14 @@ def load_data_pack(path: str | Path = DEFAULT_PACK_PATH) -> DataPack:
     independent of CWD; a custom path loads from the filesystem."""
     try:
         if str(path) == DEFAULT_PACK_PATH:
-            raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text(
-                encoding="utf-8"
-            )
+            try:
+                raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text(
+                    encoding="utf-8"
+                )
+            except (FileNotFoundError, ModuleNotFoundError, TypeError, AttributeError):
+                # bundled-but-not-installed runtime (e.g. Vercel serverless): loader.py sits in
+                # the same dir as the pack, so resolve relative to __file__.
+                raw = (Path(__file__).parent / "iec_stub.json").read_text(encoding="utf-8")
         else:
             raw = Path(path).read_text(encoding="utf-8")
         data = json.loads(raw)
