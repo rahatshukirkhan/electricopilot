@@ -127,6 +127,31 @@ uv run uvicorn electricopilot.api:app   # POST /size  ·  GET /health
 Полный отчёт содержит пошаговую трассу с формулами и ссылками, провенанс-ноту и (при ключе)
 LLM-объяснение и независимую проверку.
 
+## ElectriCopilot Studio — интерактивный веб-воркбенч (аналог Claude Science)
+
+Визуальная рабочая среда поверх аудируемого ядра: копилот-чат (NL → расчёт → объяснение →
+агент-ревьюер), интерактивные графики (**TCC**-кривые координации, свип сечения, профиль ΔU,
+дерейтинг, однолинейка), проект-щиток и экспорт отчёта-артефакта. Ключ Gemini — серверный.
+Дизайн и границы — `docs/10-studio-design.md`.
+
+**Локальный запуск:**
+```bash
+uv sync --extra dev --extra api
+uv run uvicorn electricopilot.studio_api:app --port 8000
+# открыть http://localhost:8000
+```
+Без `OPENROUTER_API_KEY` работают все детерминированные части (расчёт, графики, трасса);
+копилот-чат/ревьюер включаются при заданном ключе.
+
+**Деплой на Vercel (статический фронтенд + Python-serverless бэкенд):**
+Репозиторий уже содержит `vercel.json`, `api/index.py`, `requirements.txt`.
+1. Импортировать репозиторий на [vercel.com/new](https://vercel.com/new) (или `npx vercel` из корня).
+2. В Project → Settings → Environment Variables добавить `OPENROUTER_API_KEY` (для живого
+   Gemini). Опционально `ELECTRICOPILOT_MODEL_STRONG/FAST`.
+3. Deploy. Каждый `git push` в `main` пересобирает деплой.
+
+Ключи в репозиторий не коммитятся; на Vercel они хранятся в env проекта.
+
 ## Тесты и качество (CI)
 
 ```bash
