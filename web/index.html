@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ElectriCopilot Studio — аудируемый воркбенч электрика (IEC 60364)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">⚡ ElectriCopilot <span>Studio</span></div>
+  <div class="project"><input id="projectName" value="Щит ВРУ-1" title="Имя проекта" /></div>
+  <div id="statusBadge" class="badge">—</div>
+  <div class="mode" id="modeTag" title="Режим LLM">…</div>
+</header>
+
+<main class="grid">
+  <!-- LEFT: circuits + parameters -->
+  <aside class="col left">
+    <section class="panel">
+      <div class="panel-h">Цепи проекта <button id="addCircuit" class="mini">+ добавить</button></div>
+      <ul id="circuitList" class="circuits"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h">Параметры цепи</div>
+      <div class="form">
+        <label>Название <input id="f_desc" value="Двигатель 15 кВт" /></label>
+        <div class="row">
+          <label>Ввод
+            <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select>
+          </label>
+          <label id="wrap_power">P, Вт <input id="f_power" type="number" value="15000" /></label>
+          <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
+        </div>
+        <div class="row">
+          <label>U, В <input id="f_voltage" type="number" value="400" /></label>
+          <label>Фаз <select id="f_phases"><option>1</option><option selected>3</option></select></label>
+          <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.85" /></label>
+        </div>
+        <div class="row">
+          <label>Назначение
+            <select id="f_purpose"><option>lighting</option><option>power</option><option>socket</option><option selected>motor</option><option>general</option></select>
+          </label>
+          <label>Метод
+            <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select>
+          </label>
+        </div>
+        <div class="row">
+          <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
+          <label>Изоляция <select id="f_insulation"><option>PVC</option><option selected>XLPE</option></select></label>
+        </div>
+        <div class="row">
+          <label>t окр., °C <input id="f_ambient" type="number" value="40" /></label>
+          <label>Групп. <input id="f_grouping" type="number" value="3" /></label>
+          <label>Длина, м <input id="f_length" type="number" value="50" /></label>
+        </div>
+        <div class="row">
+          <label>Аппарат <select id="f_device"><option>MCB</option><option>MCCB</option><option selected>gG_fuse</option></select></label>
+          <label id="wrap_curve">Хар-ка <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
+        </div>
+        <div class="row">
+          <label>I КЗ, А <input id="f_iscc" type="number" value="2500" /></label>
+          <label>t откл., с <input id="f_tdisc" type="number" step="0.01" value="0.1" /></label>
+          <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
+        </div>
+        <div class="row btns">
+          <button id="recalc" class="primary">Рассчитать</button>
+          <button id="saveCircuit" class="ghost">Сохранить в проект</button>
+          <button id="exportReport" class="ghost">Экспорт отчёта</button>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- CENTER: artifact -->
+  <section class="col center">
+    <div class="summary" id="summary"></div>
+    <div class="tabs" id="tabs">
+      <button data-tab="tcc" class="active">TCC координация</button>
+      <button data-tab="sweep">Свип сечения</button>
+      <button data-tab="vd">Профиль ΔU</button>
+      <button data-tab="derating">Дерейтинг</button>
+      <button data-tab="sld">Однолинейка</button>
+    </div>
+    <div class="artifact">
+      <div id="plot_tcc" class="plot tabpane"></div>
+      <div id="plot_sweep" class="plot tabpane" style="display:none"></div>
+      <div id="plot_vd" class="plot tabpane" style="display:none"></div>
+      <div id="plot_derating" class="plot tabpane" style="display:none"></div>
+      <div id="plot_sld" class="tabpane" style="display:none"></div>
+    </div>
+    <div class="prov" id="provenance"></div>
+    <div class="disclaimer" id="disclaimer"></div>
+  </section>
+
+  <!-- RIGHT: copilot + trace -->
+  <aside class="col right">
+    <section class="panel copilot">
+      <div class="panel-h">Копилот</div>
+      <div id="chat" class="chat"></div>
+      <div class="chatbar">
+        <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами: «трёхфазный двигатель 11 кВт, 400 В, XLPE медь метод C, 45 °C, 60 м, автомат, КЗ 5000 А»"></textarea>
+        <button id="chatSend" class="primary">▷</button>
+      </div>
+      <div class="row btns">
+        <button id="btnExplain" class="ghost">Объяснить</button>
+        <button id="btnReview" class="ghost">Ревьюер ✓</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h">Трасса аудита (до норм)</div>
+      <div id="trace" class="trace"></div>
+    </section>
+  </aside>
+</main>
+
+<script src="./app.js"></script>
+</body>
+</html>

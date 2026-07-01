@@ -69,6 +69,7 @@ class ProtectionSpec(BaseModel):
     prospective_fault_current_a: Optional[float] = Field(None, gt=0)
     disconnection_time_s: float = Field(0.1, gt=0)
     max_voltage_drop_pct: Optional[float] = None
+    trip_curve_type: Literal["B", "C", "D"] = "C"  # MCB magnetic band (Studio TCC, docs/10)
 
 
 class SizingRequest(BaseModel):

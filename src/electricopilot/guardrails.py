@@ -22,12 +22,15 @@ _NUM = re.compile(
     r"\d{1,3}(?:" + _SEP_CLASS + r"\d{3})+(?:[.,]\d+)?"
     r"|\d+(?:[.,]\d+)?"
 )
-# Citation references removed from narratives before number extraction.
+# Citation references removed from narratives before number extraction. Covers Latin/Cyrillic
+# standard prefixes, clause words, unicode dashes, tables — so citations in any prose form are
+# stripped as a WHOLE reference (individual digits stay checkable, so "43 A" is still caught).
 _CITE_PAT = re.compile(
-    r"IEC\s*\d[\d.\-]*"            # IEC 60364-4-43, IEC 60898
-    r"|§\s*\d[\dA-Za-z.]*"         # §433.1, §434.5.2
-    r"|\bB\.\d[\d.]*"              # B.52.14
-    r"|(?:Табл\.?|Table|Таблица)\s*[A-ZА-Я]?\.?[\d.]+\w*"  # Table 43A, Табл. B.52.17
+    r"(?:IEC|МЭК|ГОСТ|EN|BS|DIN)\s*\d[\d.‐-―\-]*"   # IEC 60364-4-43, МЭК 60364‑5‑52
+    r"|§\s*\d[\dA-Za-z.]*"                                    # §433.1, §434.5.2
+    r"|(?:п\.?|пункт|clause)\s*\d[\d.]*"                      # п. 433.1, пункт 434.5.2
+    r"|\bB\.\d[\d.]*"                                         # B.52.14
+    r"|(?:Табл\.?|Table|Таблица)\s*[A-ZА-Я]?\.?[\d.]+\w*"     # Table 43A, Табл. B.52.17
     r"|Annex\s+\w+",
     re.IGNORECASE,
 )
@@ -62,9 +65,28 @@ def _collect_numbers(obj: Any, out: set[float]) -> None:
     # str: intentionally skipped
 
 
+def _harvest_text(s: str, out: set[float]) -> None:
+    for tok in _NUM.findall(s):
+        v = _to_float(tok)
+        if v is not None:
+            out.add(v)
+
+
 def _allowed_numbers(result: SizingResult) -> set[float]:
+    """Typed numeric leaves + numbers from AUDIT prose (formula/computation/detail/condition),
+    which legitimately expose derived values like 1.45·IZ. Citation identifier strings are NOT
+    harvested (that is what let smuggled numbers ride on IEC clause ids)."""
     allowed: set[float] = set(_STRUCTURAL)
     _collect_numbers(result.model_dump(), allowed)
+    if result.request.load.power_w:      # engineers routinely restate power in kW
+        allowed.add(result.request.load.power_w / 1000.0)
+    for st in result.audit_trace:
+        for s in (st.formula, st.computation):
+            if s:
+                _harvest_text(s, allowed)
+    for ch in result.checks:
+        _harvest_text(ch.condition, allowed)
+        _harvest_text(ch.detail, allowed)
     return allowed
 
 

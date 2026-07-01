@@ -286,5 +286,54 @@
       "standard": "IEC 60364-5-52",
       "table": "B.52.1"
     }
+  },
+  "trip_curves": {
+    "MCB": {
+      "thermal_time_s_min": 12,
+      "thermal_time_s_max": 60,
+      "mag_multiple": {
+        "B": [
+          3,
+          5
+        ],
+        "C": [
+          5,
+          10
+        ],
+        "D": [
+          10,
+          20
+        ]
+      },
+      "instant_time_s": 0.01,
+      "citation": {
+        "standard": "IEC 60898",
+        "note": "SYNTHETIC illustrative trip band"
+      }
+    },
+    "MCCB": {
+      "thermal_time_s_min": 15,
+      "thermal_time_s_max": 70,
+      "mag_multiple": {
+        "C": [
+          6,
+          10
+        ]
+      },
+      "instant_time_s": 0.012,
+      "citation": {
+        "standard": "IEC 60947-2",
+        "note": "SYNTHETIC"
+      }
+    },
+    "gG_fuse": {
+      "coef": 6000.0,
+      "exp": 3.6,
+      "instant_time_s": 0.004,
+      "citation": {
+        "standard": "IEC 60269",
+        "note": "SYNTHETIC illustrative time-current"
+      }
+    }
   }
 }

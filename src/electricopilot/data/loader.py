@@ -50,6 +50,7 @@ class DataPack(BaseModel):
     grouping_correction: dict[str, Any]
     ampacity: dict[str, Any]
     citations: dict[str, Any]
+    trip_curves: dict[str, Any] = {}   # illustrative time-current curves (Studio TCC, docs/10)
 
     @model_validator(mode="after")
     def _validate(self) -> "DataPack":
@@ -145,6 +146,12 @@ class DataPack(BaseModel):
         if key not in self.citations:
             raise DataPackError(f"no citation for key '{key}'")
         return _cite(self.citations[key])
+
+    def trip_curve(self, device: DeviceClass) -> tuple[dict[str, Any], Citation]:
+        entry = self.trip_curves.get(device)
+        if entry is None:
+            raise DataPackError(f"no trip curve for device class '{device}'")
+        return entry, _cite(entry.get("citation", {"standard": "n/a"}))
 
 
 def load_data_pack(path: str | Path = DEFAULT_PACK_PATH) -> DataPack:

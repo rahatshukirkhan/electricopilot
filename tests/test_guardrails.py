@@ -58,6 +58,14 @@ def test_citation_digit_not_reusable_as_value():
     assert not ok and "43" in unverified
 
 
+def test_derived_coordination_value_passes():
+    """1.45·IZ (shown in the overload check detail, e.g. 39.15 for case 1) is an audited
+    derived value — a narrative citing it must NOT be flagged."""
+    r = size(make_request(**CASE1))  # Iz=27 → 1.45·27 = 39.15 appears in the check detail
+    ok, unverified = check_numeric_provenance("Условие I2 ≤ 1,45·IZ = 39,15 A выполнено.", r, strict=True)
+    assert ok, unverified
+
+
 def test_downgrade_never_improves_fail():
     """Regression: a provenance failure must not turn FAIL into NEEDS_REVIEW."""
     r = size(make_request(**CASE1)).model_copy(update={"overall_status": "FAIL"})
