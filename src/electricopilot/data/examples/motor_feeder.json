@@ -1,0 +1,25 @@
+{
+  "load": {
+    "description": "Асинхронный двигатель 15 кВт, 3-фазный фидер",
+    "power_w": 15000,
+    "voltage_v": 400,
+    "phases": 3,
+    "power_factor": 0.85,
+    "purpose": "motor"
+  },
+  "installation": {
+    "method": "C",
+    "material": "Cu",
+    "insulation": "XLPE",
+    "ambient_temp_c": 40,
+    "grouping_circuits": 3,
+    "length_m": 50
+  },
+  "protection": {
+    "device_class": "gG_fuse",
+    "prospective_fault_current_a": 2500,
+    "disconnection_time_s": 0.1
+  },
+  "project_ref": "DEMO-FEEDER-01",
+  "designer": "проектировщик (черновик)"
+}

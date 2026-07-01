@@ -52,3 +52,10 @@ target-version = "py311"
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+# api.py depends on the optional `api` extra (fastapi); its decorators are untyped when
+# fastapi isn't installed. Scope that one check off so `mypy src` stays green by default.
+[[tool.mypy.overrides]]
+module = "electricopilot.api"
+disallow_untyped_decorators = false
