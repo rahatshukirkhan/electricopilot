@@ -52,13 +52,14 @@ def _emit(result: SizingResult, narrative: Optional[LlmNarrative],
 
 
 def _finish(request: SizingRequest, *, client: Optional[OpenRouterClient], data_pack: DataPack,
-            explain: bool, verify: bool, sign: Optional[str], fmt: str, out: Optional[str]) -> int:
+            explain: bool, verify: bool, sign: Optional[str], fmt: str, out: Optional[str],
+            prefer_jsonl: bool = False) -> int:
     cfg = get_config()
     output = run(request, client=client, data_pack=data_pack, explain=explain, verify=verify,
                  strict_provenance=cfg.strict_provenance,
                  model_fast=cfg.model_fast, model_strong=cfg.model_strong)
     result = _apply_sign(output.result, sign)
-    loc = persist(result)
+    loc = persist(result, prefer_jsonl=prefer_jsonl)
     _emit(result, output.narrative, output.verdict, fmt, out)
     typer.echo(f"\n[сохранено: {loc}]", err=True)
     return 0 if result.overall_status in ("PASS", "NEEDS_REVIEW") else 1
@@ -140,7 +141,8 @@ def demo(live: bool = typer.Option(False, "--live", help="использоват
     )
     client = OpenRouterClient() if live else None
     raise typer.Exit(_finish(req, client=client, data_pack=_load_pack(data_pack),
-                             explain=True, verify=True, sign=None, fmt="md", out=None))
+                             explain=True, verify=True, sign=None, fmt="md", out=None,
+                             prefer_jsonl=not live))
 
 
 @app.command()

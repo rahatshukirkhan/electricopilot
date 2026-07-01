@@ -26,12 +26,13 @@ def _session_id(result: SizingResult, ts: str) -> str:
     return f"{ts.replace(':', '').replace('-', '')[:15]}-{h}"
 
 
-def persist(result: SizingResult) -> str:
-    """Store the result; return a location id (neon:<id>) or JSONL file path."""
+def persist(result: SizingResult, *, prefer_jsonl: bool = False) -> str:
+    """Store the result; return a location id (neon:<id>) or JSONL file path.
+    prefer_jsonl forces the offline JSONL sink even when DATABASE_URL is set."""
     cfg = get_config()
     ts = datetime.now(timezone.utc).isoformat()
     sid = _session_id(result, ts)
-    if cfg.db_available:
+    if cfg.db_available and not prefer_jsonl:
         try:
             return _persist_neon(result, sid, cfg.database_url)
         except Exception as exc:  # noqa: BLE001 - degrade to JSONL, never lose the audit
