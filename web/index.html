@@ -3,13 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
 <title>ElectriCopilot Studio — воркбенч проектировщика электрики (IEC 60364)</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" />
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
 <header class="topbar">
-  <div class="brand" id="homeLink">⚡ ElectriCopilot <span>Studio</span></div>
+  <div class="brand" id="homeLink" title="К проектам">
+    <svg class="bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg>
+    ElectriCopilot <span>Studio</span>
+  </div>
   <nav class="crumbs" id="crumbs"></nav>
   <div class="save" id="saveState" title="Автосохранение">сохранено</div>
   <div id="statusBadge" class="badge">—</div>
@@ -132,7 +139,7 @@
               <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
               <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
             </div>
-            <div class="row btns"><button id="recalc" class="primary">Пересчитать</button></div>
+            <div class="row btns"><button id="recalc" class="ghost">Пересчитать</button></div>
           </div>
         </section>
       </aside>
@@ -162,11 +169,13 @@
           <div id="chat" class="chat"></div>
           <div class="chatbar">
             <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами — разберу, посчитаю, проверю ревьюером"></textarea>
-            <button id="chatSend" class="primary">▷</button>
+            <button id="chatSend" class="primary" title="Отправить (⌘/Ctrl+Enter)" aria-label="Отправить">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-4 16-4.5-6L4 12Z"/><path d="m11.5 14 4.5-6"/></svg>
+            </button>
           </div>
           <div class="row btns">
             <button id="btnExplain" class="ghost">Объяснить</button>
-            <button id="btnReview" class="ghost">Ревьюер ✓</button>
+            <button id="btnReview" class="ghost">Ревьюер</button>
           </div>
         </section>
         <section class="panel">
