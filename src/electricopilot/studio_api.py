@@ -18,12 +18,12 @@ from pydantic import BaseModel
 from .config import get_config
 from .engine import size
 from .exceptions import LlmConfigError, LlmError
-from .guardrails import apply_provenance_downgrade, check_numeric_provenance
+from .guardrails import check_numeric_provenance
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
 from .llm.intake import intake_parse
 from .llm.verify import verify_deterministic_check, verify_review
-from .models import LlmNarrative, SizingRequest, SizingResult, VerificationVerdict
+from .models import SizingRequest, SizingResult, VerificationVerdict
 from .viz import build_visuals
 
 app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
