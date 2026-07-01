@@ -36,6 +36,36 @@ def test_citation_numbers_not_flagged():
     assert ok, unverified
 
 
+def test_space_grouped_thousands_caught():
+    """Regression: '25 000' must not tokenize into ['25','000'] and slip through."""
+    r = size(make_request(**CASE1))  # In=20, S=4; no 25000 anywhere
+    ok, unverified = check_numeric_provenance("Ток КЗ 25 000 А.", r, strict=True)
+    assert not ok and "25 000" in unverified
+
+
+def test_unrelated_standard_rating_flagged():
+    """Regression: a standard rating not used in THIS design must be flagged (no ladder leak)."""
+    r = size(make_request(**CASE1))  # selected In=20 A
+    for smuggled in ("Требуется 315 A предохранитель.", "Рекомендую автомат 250 А."):
+        ok, unverified = check_numeric_provenance(smuggled, r, strict=True)
+        assert not ok, smuggled
+
+
+def test_citation_digit_not_reusable_as_value():
+    """Regression: '43' from IEC 60364-4-43 must not license a smuggled '43 A'."""
+    r = size(make_request(**CASE1))
+    ok, unverified = check_numeric_provenance("Провод рассчитан на 43 A длительно.", r, strict=True)
+    assert not ok and "43" in unverified
+
+
+def test_downgrade_never_improves_fail():
+    """Regression: a provenance failure must not turn FAIL into NEEDS_REVIEW."""
+    r = size(make_request(**CASE1)).model_copy(update={"overall_status": "FAIL"})
+    bad = LlmNarrative(text="999", model="x", provenance_ok=False, unverified_numbers=["999"])
+    out = apply_provenance_downgrade(r, bad)
+    assert out.overall_status == "FAIL"  # stayed FAIL, not softened to NEEDS_REVIEW
+
+
 def test_signoff_default_and_disclaimer():
     r = size(make_request(**CASE1))
     assert r.signoff.status == "UNSIGNED_ADVISORY"

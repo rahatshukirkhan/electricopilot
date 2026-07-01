@@ -32,7 +32,9 @@ src/electricopilot/
 │   └── verify.py     # независимая проверка трассы (Pro) + детерм. проверка (всегда)
 ├── report.py         # SizingResult → Markdown/JSON отчёт с блоком подписи
 ├── persistence.py    # Neon (если DATABASE_URL) ИЛИ JSONL в ./runs/
+├── pipeline.py       # оркестрация size→explain→verify→провенанс (тестируема, client=None → фолбэк)
 ├── config.py         # чтение env/.env, флаги, режим (live/fallback)
+├── api.py            # опциональный FastAPI (extra `api`): POST /size, GET /health
 └── cli.py            # Typer CLI: size / explain / verify / demo / models
 ```
 
