@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": "src/**" } },
+    { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": "src/**", "maxDuration": 60 } },
     { "src": "web/**", "use": "@vercel/static" }
   ],
   "routes": [
