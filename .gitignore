@@ -1,0 +1,35 @@
+# --- Secrets / local env ---
+.env
+.env.local
+*.local
+secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# --- Tooling caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# --- Runtime / data artifacts ---
+*.log
+runs/
+*.sqlite
+*.sqlite3
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
