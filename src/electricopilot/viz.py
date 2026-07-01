@@ -127,29 +127,29 @@ def tcc(req: SizingRequest, result: SizingResult, pack: DataPack) -> dict[str, A
         mL, mH = mrange
         Tmin, Tmax = params["thermal_time_s_min"], params["thermal_time_s_max"]
         inst = params["instant_time_s"]
-        for I in grid:
-            x = I / In
+        for cur in grid:
+            x = cur / In
             tf = _mcb_t(x, Tmin, mL, inst)
             ts = _mcb_t(x, Tmax, mH, inst)
             if tf is not None:
-                dev_min.append([round(I, 2), round(tf, 4)])
+                dev_min.append([round(cur, 2), round(tf, 4)])
             if ts is not None:
-                dev_max.append([round(I, 2), round(ts, 4)])
+                dev_max.append([round(cur, 2), round(ts, 4)])
     else:  # gG fuse
         coef, exp, inst = params["coef"], params["exp"], params["instant_time_s"]
-        for I in grid:
-            x = I / In
+        for cur in grid:
+            x = cur / In
             if x <= 1.2:
                 continue
             t = min(max(coef * x ** (-exp), inst), _TMAX)
-            dev_min.append([round(I, 2), round(t * 0.7, 4)])
-            dev_max.append([round(I, 2), round(t, 4)])
+            dev_min.append([round(cur, 2), round(t * 0.7, 4)])
+            dev_max.append([round(cur, 2), round(t, 4)])
 
     cable = []
-    for I in grid:
-        t = (k * S / I) ** 2
+    for cur in grid:
+        t = (k * S / cur) ** 2
         if _TMIN <= t <= _TMAX:
-            cable.append([round(I, 2), round(t, 4)])
+            cable.append([round(cur, 2), round(t, 4)])
 
     sc_check = next((c for c in result.checks if c.name == "short_circuit"), None)
     return {
