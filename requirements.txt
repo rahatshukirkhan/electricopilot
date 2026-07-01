@@ -1,0 +1,6 @@
+# Runtime deps for the Vercel Python serverless function (api/index.py).
+# The deterministic engine + Studio API only need these (no typer/uvicorn on serverless).
+fastapi>=0.110
+pydantic>=2.6
+httpx>=0.27
+python-dotenv>=1.0
