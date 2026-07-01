@@ -24,6 +24,7 @@ from .llm.explain import explain_render, explain_render_template
 from .llm.intake import intake_parse
 from .llm.verify import verify_deterministic_check, verify_review
 from .models import SizingRequest, SizingResult, VerificationVerdict
+from .project import build_project_report
 from .viz import build_visuals
 
 app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
@@ -99,6 +100,16 @@ def verify_endpoint(request: SizingRequest) -> dict[str, Any]:
     else:
         verdict = VerificationVerdict(agrees=det_ok, model="", deterministic_ok=det_ok)
     return {"verdict": verdict.model_dump()}
+
+
+class ProjectBody(BaseModel):
+    project: dict[str, Any]
+
+
+@app.post("/api/project-report")
+def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
+    """Recompute every circuit of a board with the real engine → panel schedule + totals + report."""
+    return build_project_report(body.project)
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---

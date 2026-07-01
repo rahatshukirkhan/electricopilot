@@ -3,120 +3,182 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ElectriCopilot Studio — аудируемый воркбенч электрика (IEC 60364)</title>
+<title>ElectriCopilot Studio — воркбенч проектировщика электрики (IEC 60364)</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">⚡ ElectriCopilot <span>Studio</span></div>
-  <div class="project"><input id="projectName" value="Щит ВРУ-1" title="Имя проекта" /></div>
+  <div class="brand" id="homeLink">⚡ ElectriCopilot <span>Studio</span></div>
+  <nav class="crumbs" id="crumbs"></nav>
+  <div class="save" id="saveState" title="Автосохранение">сохранено</div>
   <div id="statusBadge" class="badge">—</div>
   <div class="mode" id="modeTag" title="Режим LLM">…</div>
 </header>
+<div class="advisory" id="advisory">
+  Рекомендательно · значения норм-таблиц <b>синтетические</b> (не IEC) · ссылки на пункты IEC <b>реальные</b> ·
+  результат требует <b>подписи инженера</b>.
+</div>
 
-<main class="grid">
-  <!-- LEFT: circuits + parameters -->
-  <aside class="col left">
-    <section class="panel">
-      <div class="panel-h">Цепи проекта <button id="addCircuit" class="mini">+ добавить</button></div>
-      <ul id="circuitList" class="circuits"></ul>
-    </section>
-
-    <section class="panel">
-      <div class="panel-h">Параметры цепи</div>
-      <div class="form">
-        <label>Название <input id="f_desc" value="Двигатель 15 кВт" /></label>
-        <div class="row">
-          <label>Ввод
-            <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select>
-          </label>
-          <label id="wrap_power">P, Вт <input id="f_power" type="number" value="15000" /></label>
-          <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
-        </div>
-        <div class="row">
-          <label>U, В <input id="f_voltage" type="number" value="400" /></label>
-          <label>Фаз <select id="f_phases"><option>1</option><option selected>3</option></select></label>
-          <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.85" /></label>
-        </div>
-        <div class="row">
-          <label>Назначение
-            <select id="f_purpose"><option>lighting</option><option>power</option><option>socket</option><option selected>motor</option><option>general</option></select>
-          </label>
-          <label>Метод
-            <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select>
-          </label>
-        </div>
-        <div class="row">
-          <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
-          <label>Изоляция <select id="f_insulation"><option>PVC</option><option selected>XLPE</option></select></label>
-        </div>
-        <div class="row">
-          <label>t окр., °C <input id="f_ambient" type="number" value="40" /></label>
-          <label>Групп. <input id="f_grouping" type="number" value="3" /></label>
-          <label>Длина, м <input id="f_length" type="number" value="50" /></label>
-        </div>
-        <div class="row">
-          <label>Аппарат <select id="f_device"><option>MCB</option><option>MCCB</option><option selected>gG_fuse</option></select></label>
-          <label id="wrap_curve">Хар-ка <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
-        </div>
-        <div class="row">
-          <label>I КЗ, А <input id="f_iscc" type="number" value="2500" /></label>
-          <label>t откл., с <input id="f_tdisc" type="number" step="0.01" value="0.1" /></label>
-          <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
-        </div>
-        <div class="row btns">
-          <button id="recalc" class="primary">Рассчитать</button>
-          <button id="saveCircuit" class="ghost">Сохранить в проект</button>
-          <button id="exportReport" class="ghost">Экспорт отчёта</button>
-        </div>
+<main>
+  <!-- ============ DASHBOARD ============ -->
+  <section id="screen-dashboard" class="screen">
+    <div class="dash-head">
+      <h2>Проекты — щиты</h2>
+      <div class="dash-actions">
+        <input id="dashSearch" placeholder="поиск…" />
+        <button id="btnNewProject" class="primary">+ Новый щит</button>
+        <button id="btnSample" class="ghost">Загрузить пример</button>
+        <label class="ghost filebtn">Импорт .ecproj.json<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
       </div>
-    </section>
-  </aside>
-
-  <!-- CENTER: artifact -->
-  <section class="col center">
-    <div class="summary" id="summary"></div>
-    <div class="tabs" id="tabs">
-      <button data-tab="tcc" class="active">TCC координация</button>
-      <button data-tab="sweep">Свип сечения</button>
-      <button data-tab="vd">Профиль ΔU</button>
-      <button data-tab="derating">Дерейтинг</button>
-      <button data-tab="sld">Однолинейка</button>
     </div>
-    <div class="artifact">
-      <div id="plot_tcc" class="plot tabpane"></div>
-      <div id="plot_sweep" class="plot tabpane" style="display:none"></div>
-      <div id="plot_vd" class="plot tabpane" style="display:none"></div>
-      <div id="plot_derating" class="plot tabpane" style="display:none"></div>
-      <div id="plot_sld" class="tabpane" style="display:none"></div>
-    </div>
-    <div class="prov" id="provenance"></div>
-    <div class="disclaimer" id="disclaimer"></div>
+    <div id="projectGrid" class="cards"></div>
   </section>
 
-  <!-- RIGHT: copilot + trace -->
-  <aside class="col right">
-    <section class="panel copilot">
-      <div class="panel-h">Копилот</div>
-      <div id="chat" class="chat"></div>
-      <div class="chatbar">
-        <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами: «трёхфазный двигатель 11 кВт, 400 В, XLPE медь метод C, 45 °C, 60 м, автомат, КЗ 5000 А»"></textarea>
-        <button id="chatSend" class="primary">▷</button>
+  <!-- ============ PROJECT / BOARD ============ -->
+  <section id="screen-project" class="screen" hidden>
+    <div class="board-head">
+      <div class="board-id">
+        <input id="b_name" class="board-name" />
+        <div class="board-sub">
+          <input id="b_ref" placeholder="DB-1" title="Обозначение щита" />
+          <input id="b_location" placeholder="расположение" title="Расположение" />
+          <span class="supply" id="b_supply"></span>
+        </div>
       </div>
-      <div class="row btns">
-        <button id="btnExplain" class="ghost">Объяснить</button>
-        <button id="btnReview" class="ghost">Ревьюер ✓</button>
+      <div class="board-actions">
+        <span id="boardRollup" class="badge">—</span>
+        <button id="btnReport" class="ghost">Отчёт по щиту</button>
+        <button id="btnExportProj" class="ghost">Экспорт</button>
+        <button id="btnBackDash" class="ghost">← К проектам</button>
       </div>
-    </section>
+    </div>
 
-    <section class="panel">
-      <div class="panel-h">Трасса аудита (до норм)</div>
-      <div id="trace" class="trace"></div>
-    </section>
-  </aside>
+    <div class="sched-wrap">
+      <table class="schedule">
+        <thead><tr>
+          <th>Ref</th><th>Описание</th><th>P,кВт</th><th>cosφ</th><th>Фаза</th><th>IB,A</th>
+          <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th><th></th>
+        </tr></thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+    </div>
+
+    <div class="quickadd">
+      <button id="btnAddCircuit" class="primary">+ Добавить цепь</button>
+      <input id="nlQuick" placeholder="или опиши цепь словами: «розетки кухни 3.6 кВт, 230 В, PVC медь метод C, 18 м, автомат C, КЗ 6 кА»" />
+      <button id="btnNlAdd" class="ghost">Разобрать и добавить</button>
+    </div>
+
+    <div class="totals" id="boardTotals"></div>
+    <div class="disclaimer" id="projDisclaimer"></div>
+  </section>
+
+  <!-- ============ CIRCUIT EDITOR ============ -->
+  <section id="screen-editor" class="screen" hidden>
+    <div class="editor-bar">
+      <button id="btnBackPanel" class="ghost">← К щиту</button>
+      <div class="ed-nav"><button id="btnPrev" class="mini">‹ пред</button><span id="edRef"></span><button id="btnNext" class="mini">след ›</button></div>
+      <div class="ed-right">
+        <span id="edSignoff" class="badge small">UNSIGNED_ADVISORY</span>
+        <button id="btnSign" class="ghost">Подписать цепь</button>
+        <button id="btnSaveCircuit" class="primary">Сохранить в щит</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <aside class="col left">
+        <section class="panel">
+          <div class="panel-h">Параметры цепи</div>
+          <div class="form">
+            <div class="row">
+              <label>Ref <input id="f_ref" placeholder="L1" /></label>
+              <label>Название <input id="f_desc" value="Цепь" /></label>
+            </div>
+            <div class="row">
+              <label>Ввод <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select></label>
+              <label id="wrap_power">P, Вт <input id="f_power" type="number" value="3680" /></label>
+              <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
+            </div>
+            <div class="row">
+              <label>U, В <input id="f_voltage" type="number" value="230" /></label>
+              <label>Фаз <select id="f_phases"><option selected>1</option><option>3</option></select></label>
+              <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.95" /></label>
+            </div>
+            <div class="row">
+              <label>Назначение <select id="f_purpose"><option>lighting</option><option>power</option><option selected>socket</option><option>motor</option><option>general</option></select></label>
+              <label>Фаза щита <select id="f_phase"><option>L1</option><option>L2</option><option>L3</option><option value="L1L2L3">3ф</option></select></label>
+            </div>
+            <div class="row">
+              <label>Метод <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select></label>
+              <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
+              <label>Изоляция <select id="f_insulation"><option selected>PVC</option><option>XLPE</option></select></label>
+            </div>
+            <div class="row">
+              <label>t окр., °C <input id="f_ambient" type="number" value="30" /></label>
+              <label>Групп. <input id="f_grouping" type="number" value="1" /></label>
+              <label>Длина, м <input id="f_length" type="number" value="18" /></label>
+            </div>
+            <div class="row">
+              <label>Аппарат <select id="f_device"><option selected>MCB</option><option>MCCB</option><option>gG_fuse</option></select></label>
+              <label id="wrap_curve">Хар-ка <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
+            </div>
+            <div class="row">
+              <label>I КЗ, А <input id="f_iscc" type="number" value="3000" /></label>
+              <label title="время отключения аппарата для проверки КЗ (мгновенная зона ≈0.01 с; не путать с 0.4 с ADS)">t КЗ, с <input id="f_tdisc" type="number" step="0.01" value="0.01" /></label>
+              <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
+            </div>
+            <div class="row">
+              <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
+              <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
+            </div>
+            <div class="row btns"><button id="recalc" class="primary">Пересчитать</button></div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="col center">
+        <div class="summary" id="summary"></div>
+        <div class="tabs" id="tabs">
+          <button data-tab="tcc" class="active">TCC координация</button>
+          <button data-tab="sweep">Свип сечения</button>
+          <button data-tab="vd">Профиль ΔU</button>
+          <button data-tab="derating">Дерейтинг</button>
+          <button data-tab="sld">Однолинейка</button>
+        </div>
+        <div class="artifact">
+          <div id="plot_tcc" class="plot tabpane"></div>
+          <div id="plot_sweep" class="plot tabpane" style="display:none"></div>
+          <div id="plot_vd" class="plot tabpane" style="display:none"></div>
+          <div id="plot_derating" class="plot tabpane" style="display:none"></div>
+          <div id="plot_sld" class="tabpane" style="display:none"></div>
+        </div>
+        <div class="prov" id="provenance"></div>
+      </section>
+
+      <aside class="col right">
+        <section class="panel copilot">
+          <div class="panel-h">Копилот</div>
+          <div id="chat" class="chat"></div>
+          <div class="chatbar">
+            <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами — разберу, посчитаю, проверю ревьюером"></textarea>
+            <button id="chatSend" class="primary">▷</button>
+          </div>
+          <div class="row btns">
+            <button id="btnExplain" class="ghost">Объяснить</button>
+            <button id="btnReview" class="ghost">Ревьюер ✓</button>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-h">Трасса аудита (до норм)</div>
+          <div id="trace" class="trace"></div>
+        </section>
+      </aside>
+    </div>
+  </section>
 </main>
 
+<div id="toast" class="toast" hidden></div>
 <script src="./app.js"></script>
 </body>
 </html>
