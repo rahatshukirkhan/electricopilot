@@ -13,7 +13,7 @@ from typing import Any, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .config import get_config
 from .engine import size
@@ -66,8 +66,10 @@ def intake_endpoint(body: IntakeBody) -> dict[str, Any]:
     try:
         req = intake_parse(body.text, _client(), model=cfg.model_fast)
         return {"ok": True, "request": req.model_dump(), "model": cfg.model_fast}
-    except (LlmConfigError, LlmError, ValueError) as exc:
-        return {"ok": False, "error": "intake_failed", "message": str(exc)}
+    except (LlmConfigError, LlmError, ValueError, ValidationError):
+        return {"ok": False, "error": "intake_failed",
+                "message": "Не удалось разобрать описание в параметры цепи — уточни формулировку "
+                           "или задай параметры вручную."}
 
 
 @app.post("/api/explain")
