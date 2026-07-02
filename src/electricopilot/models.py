@@ -18,7 +18,7 @@ DeviceClass = Literal["MCB", "MCCB", "gG_fuse"]
 CircuitPurpose = Literal["lighting", "power", "socket", "motor", "general"]
 StepStatus = Literal["info", "pass", "fail", "warning"]
 OverallStatus = Literal["PASS", "FAIL", "NEEDS_REVIEW"]
-DataStatus = Literal["illustrative", "licensed"]
+DataStatus = Literal["illustrative", "public_standard", "licensed"]
 SignStatus = Literal["UNSIGNED_ADVISORY", "SIGNED"]
 Governing = Literal["overload_coordination", "voltage_drop", "short_circuit"]
 StepId = Literal["current", "protection", "ampacity", "voltage_drop", "short_circuit", "summary"]
@@ -134,6 +134,7 @@ class DataPackMeta(BaseModel):
     version: str
     status: DataStatus
     source_note: str
+    source_document: Optional[str] = None
 
 
 class SizingResult(BaseModel):
@@ -182,3 +183,25 @@ PROVENANCE_NOTE_ILLUSTRATIVE = (
     "IEC 60364), но пометки PASS/FAIL отражают арифметику относительно синтетических значений, "
     "а не соответствие реальному стандарту."
 )
+
+
+def provenance_note_public(source_document: Optional[str]) -> str:
+    """Provenance note for a `public_standard` pack (docs/12 §1.1). Values are transcribed
+    from a real public government standard (not IEC-copyrighted); the source document is
+    not reproduced in full, only cited per table/clause."""
+    doc = source_document or "указанного в data_pack.meta источника"
+    return (
+        f"Числовые значения внесены из публичного государственного стандарта ({doc}); "
+        "документ не воспроизводится целиком, только цитируется по пунктам/таблицам. "
+        "Транскрипция проверена инженером (см. _citation.verified_by таблиц пакета)."
+    )
+
+
+def provenance_note_for(meta: "DataPackMeta") -> str:
+    """Single source of truth for SizingResult.data_provenance_note / project report notes,
+    keyed off data_pack.meta.status (docs/12 §1.1)."""
+    if meta.status == "illustrative":
+        return PROVENANCE_NOTE_ILLUSTRATIVE
+    if meta.status == "public_standard":
+        return provenance_note_public(meta.source_document)
+    return ""

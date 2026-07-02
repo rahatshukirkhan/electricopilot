@@ -4,7 +4,6 @@ from __future__ import annotations
 from ..data.loader import DataPack, load_data_pack
 from ..models import (
     DISCLAIMER,
-    PROVENANCE_NOTE_ILLUSTRATIVE,
     Check,
     Citation,
     Governing,
@@ -15,6 +14,7 @@ from ..models import (
     SelectedProtection,
     SizingRequest,
     SizingResult,
+    provenance_note_for,
 )
 from .ampacity import corrected_ampacity
 from .current import design_current
@@ -161,7 +161,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         step_sc, summary_step,
     ]
 
-    note = PROVENANCE_NOTE_ILLUSTRATIVE if pack.meta.status == "illustrative" else ""
+    note = provenance_note_for(pack.meta)
     return SizingResult(
         request=request,
         selected_cable=SelectedCable(
