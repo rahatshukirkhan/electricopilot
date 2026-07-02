@@ -13,8 +13,9 @@ src/electricopilot/
 ├── models.py         # ЗАМОРОЖЕННЫЕ pydantic-контракты (см. 03)
 ├── data/
 │   ├── __init__.py
-│   ├── loader.py     # загрузка + валидация норм-пакета, выбор значений с Citation
-│   └── iec_stub.json # иллюстративный норм-пакет (status="illustrative")
+│   ├── loader.py     # мульти-пак: загрузка/валидация по имени или пути, выбор значений с Citation
+│   └── packs/         # бандловые норм-пакеты (docs/12 §1.1)
+│       └── iec-stub.json # иллюстративный норм-пакет (status="illustrative"); другие паки — по 04
 ├── engine/
 │   ├── __init__.py
 │   ├── current.py    # IB из нагрузки

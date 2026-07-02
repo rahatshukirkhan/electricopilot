@@ -17,7 +17,7 @@ DeviceClass = Literal["MCB", "MCCB", "gG_fuse"]
 CircuitPurpose = Literal["lighting", "power", "socket", "motor", "general"]
 StepStatus = Literal["info", "pass", "fail", "warning"]
 OverallStatus = Literal["PASS", "FAIL", "NEEDS_REVIEW"]
-DataStatus = Literal["illustrative", "licensed"]
+DataStatus = Literal["illustrative", "public_standard", "licensed"]
 SignStatus = Literal["UNSIGNED_ADVISORY", "SIGNED"]
 
 # governing_constraint: какой критерий связал выбор сечения. 'overload_coordination'
@@ -159,8 +159,9 @@ class SignOff(BaseModel):
 class DataPackMeta(BaseModel):
     name: str
     version: str
-    status: DataStatus            # "illustrative" в прототипе
+    status: DataStatus            # "illustrative" в прототипе; "public_standard" для pue-rk (04)
     source_note: str
+    source_document: Optional[str] = None   # напр. "ПУЭ РК, приказ №230 от 20.03.2015" (public_standard)
 
 class SizingResult(BaseModel):
     request: SizingRequest
@@ -207,10 +208,10 @@ class DataPackError(ElectriCopilotError): ...        # загрузка/вали
 class LlmConfigError(ElectriCopilotError): ...       # нет ключа/неизвестный slug (D10)
 class LlmError(ElectriCopilotError): ...             # сбой/пустой content живого вызова
 
-# --- норм-пакет ---
-# Путь резолвится ОТ ПАКЕТА через importlib.resources (electricopilot/data/iec_stub.json),
-# независимо от CWD; строковый дефолт ниже — для документации/CLI-подсказки.
-DEFAULT_PACK_PATH = "electricopilot/data/iec_stub.json"   # resolved via importlib.resources
+# --- норм-пакет (мульти-пак, docs/12 §1.1) ---
+# Бандловые паки живут в electricopilot/data/packs/<name>.json, резолвятся ОТ ПАКЕТА через
+# importlib.resources, независимо от CWD.
+DEFAULT_PACK_NAME = "iec-stub"
 
 class DataPack(BaseModel):
     """Загруженный и провалидированный норм-пакет. Единственный доступ движка к данным —
@@ -253,7 +254,12 @@ def pack_key(x: float | int) -> str:
     """Единая нормализация числового ключа таблицы: 4.0→'4', 2.5→'2.5', 35.0→'35' (B5)."""
     return format(float(x), "g")
 
-def load_data_pack(path: str | Path = DEFAULT_PACK_PATH) -> DataPack: ...  # raises DataPackError
+def load_data_pack(path: str | Path | None = None) -> DataPack: ...  # raises DataPackError
+# path=None → DEFAULT_PACK_NAME. Строка без '/' и без суффикса .json → бандловый пак по имени
+# (data/packs/<name>.json, importlib.resources, кэш per-process). Иначе — путь к JSON на диске
+# (без кэша). Пример: load_data_pack("pue-rk"), load_data_pack("/tmp/custom.json").
+
+def list_packs() -> list[DataPackMeta]: ...  # enumerate data/packs/*.json, для GET /api/packs и CLI `packs`
 
 # --- движок (детерминированный) ---
 def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> SizingResult: ...
@@ -299,17 +305,19 @@ def persist(result: SizingResult) -> str: ...   # Neon если DATABASE_URL, и
 ## 3.8 CLI (Typer)
 
 ```
-electricopilot size   [--request FILE.json | флаги нагрузки/условий] [--data-pack FILE.json]
+electricopilot size   [--request FILE.json | флаги нагрузки/условий] [--data-pack NAME|FILE.json]
                       [--explain] [--verify] [--format md|json] [--out FILE] [--sign "Имя <лиценз>"]
-electricopilot explain --request FILE.json [--data-pack FILE.json]
-electricopilot verify  --request FILE.json [--data-pack FILE.json]
-electricopilot demo    [--data-pack FILE.json]      # сквозной пример из data/examples
+electricopilot explain --request FILE.json [--data-pack NAME|FILE.json]
+electricopilot verify  --request FILE.json [--data-pack NAME|FILE.json]
+electricopilot demo    [--data-pack NAME|FILE.json]  # сквозной пример из data/examples
+electricopilot packs                                 # список бандловых норм-пакетов (data/packs/)
 electricopilot models                               # список Gemini-slug'ов (если ключ)
 
 Флаги нагрузки/условий: --power / --current, --voltage, --phases, --pf, --purpose,
    --method, --material, --insulation, --ambient, --grouping, --length,
    --device MCB|MCCB|gG_fuse, --iscc, --tdisc, --vdlimit
---data-pack FILE.json — заменить норм-пакет (в т.ч. лицензионный); по умолчанию DEFAULT_PACK_PATH.
+--data-pack NAME|FILE.json — норм-пакет: имя из data/packs/ (напр. pue-rk) или путь к JSON
+   (в т.ч. лицензионный); по умолчанию DEFAULT_PACK_NAME ("iec-stub").
 --sign "Имя Фамилия <LICENSE-ID>" — грамматика: имя = всё до '<'; license_id = внутри <…>
    (опционально). Ставит SignOff.status='SIGNED', engineer_name, license_id, signed_at=now(ISO).
    НЕ трогает SizingRequest.designer (это независимое поле авторства запроса).

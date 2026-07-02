@@ -31,13 +31,16 @@
 
 ```
 GET  /api/health                        → {status, mode}
-POST /api/size      SizingRequest        → SizingResult
-POST /api/viz       SizingRequest        → {sweep, vd_profile, derating, tcc, sld} (детерм.)
+GET  /api/packs                         → [{name, version, status, source_note}]
+POST /api/size      SizingRequest        → SizingResult                  ?pack=<name>
+POST /api/viz       SizingRequest        → {sweep, vd_profile, derating, tcc, sld} (детерм.)  ?pack=<name>
 POST /api/intake    {text}               → SizingRequest            (Gemini Flash)
-POST /api/explain   SizingRequest        → {narrative, provenance}  (Gemini Flash)
-POST /api/verify    SizingRequest        → VerificationVerdict      (Gemini Pro + детерм.)
+POST /api/explain   SizingRequest        → {narrative, provenance}  (Gemini Flash)  ?pack=<name>
+POST /api/verify    SizingRequest        → VerificationVerdict      (Gemini Pro + детерм.)  ?pack=<name>
 ```
-Все ответы аудируемы: `viz`-данные несут `citations` и `data_provenance_note`.
+Все ответы аудируемы: `viz`-данные несут `citations` и `data_provenance_note`. `?pack=<name>`
+(имя из `data/packs/`, по умолчанию `iec-stub`) резолвится через `load_data_pack`; неизвестное
+имя/путь → `400`. Неизвестный запрос без `?pack=` считается на дефолтном паке.
 
 ## 10.4 Модель TCC (иллюстративная, помечена)
 
