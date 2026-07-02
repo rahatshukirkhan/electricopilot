@@ -6,6 +6,7 @@ normalization (pack_key) and off-table policy in one place.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -154,22 +155,33 @@ class DataPack(BaseModel):
         return entry, _cite(entry.get("citation", {"standard": "n/a"}))
 
 
+@lru_cache(maxsize=1)
+def _load_default_pack() -> DataPack:
+    """Load + validate the bundled default pack, cached for the process lifetime.
+
+    Safe to cache: the pack ships with the package (immutable at runtime) and the
+    engine only reads it through DataPack accessors, so a single shared instance is
+    fine. lru_cache does not cache exceptions, so a failed load is retried next call.
+    """
+    try:
+        raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text(
+            encoding="utf-8"
+        )
+    except (FileNotFoundError, ModuleNotFoundError, TypeError, AttributeError):
+        # bundled-but-not-installed runtime (e.g. Vercel serverless): loader.py sits in
+        # the same dir as the pack, so resolve relative to __file__.
+        raw = (Path(__file__).parent / "iec_stub.json").read_text(encoding="utf-8")
+    return DataPack(**json.loads(raw))
+
+
 def load_data_pack(path: str | Path = DEFAULT_PACK_PATH) -> DataPack:
-    """Load and validate a norm data pack. Default resolves via importlib.resources,
-    independent of CWD; a custom path loads from the filesystem."""
+    """Load and validate a norm data pack. The default pack resolves via
+    importlib.resources (independent of CWD) and is cached for the process; a
+    custom path always loads fresh from the filesystem."""
     try:
         if str(path) == DEFAULT_PACK_PATH:
-            try:
-                raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text(
-                    encoding="utf-8"
-                )
-            except (FileNotFoundError, ModuleNotFoundError, TypeError, AttributeError):
-                # bundled-but-not-installed runtime (e.g. Vercel serverless): loader.py sits in
-                # the same dir as the pack, so resolve relative to __file__.
-                raw = (Path(__file__).parent / "iec_stub.json").read_text(encoding="utf-8")
-        else:
-            raw = Path(path).read_text(encoding="utf-8")
-        data = json.loads(raw)
+            return _load_default_pack()
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
         return DataPack(**data)
     except DataPackError:
         raise
