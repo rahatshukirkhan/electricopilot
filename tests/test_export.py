@@ -201,3 +201,66 @@ def test_bundle_entry_names_are_stable():
     a = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
     b = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
     assert a == b
+
+
+# --- review-fix regressions -------------------------------------------------------------
+def test_rcd_present_without_ma_defaults_to_30():
+    """rcd.present=true but no `ma` must render '30мА', not 'NoneмА' (code-review finding)."""
+    from electricopilot.export.boq import build_boq as _bq
+    board = _board(1)
+    board["circuits"][0]["meta"]["rcd"] = {"present": True, "type": "RCBO"}  # no ma
+    report = build_project_report(board)
+    dev = [r[2] for r in _bq(board, report).rows if r[1] == "Аппарат"][0]
+    assert "None" not in dev and "30мА" in dev
+    assert "None" not in sld_sheets_svg(board, report)[0]
+
+
+def test_boq_distinguishes_poles():
+    """A 1-phase and a 3-phase breaker of the same rating must be separate BoQ lines."""
+    from electricopilot.export.boq import _device_name
+    one = {"device_class": "MCB", "In_a": 16, "curve": "C", "phases": 1, "rcd": {"present": False}}
+    three = {**one, "phases": 3}
+    assert _device_name(one) != _device_name(three)
+    assert "1P" in _device_name(one) and "3P" in _device_name(three)
+
+
+def test_dxf_preserves_text_color():
+    """Text colour must survive to DXF (status labels / disclaimer), not fall back to black."""
+    d = Drawing(100, 50)
+    d.add(Text(10, 10, "FAIL", height=3, color="#e5484d"))   # red status
+    d.add(Text(10, 20, "footer", height=2, color="#556"))     # 3-digit hex
+    doc = ezdxf.read(io.StringIO(render_dxf(d).decode("utf-8")))
+    texts = {e.dxf.text: e for e in doc.modelspace() if e.dxftype() == "TEXT"}
+    assert texts["FAIL"].rgb == (0xE5, 0x48, 0x4D)
+    assert texts["footer"].rgb == (0x55, 0x55, 0x66)  # #556 → #555566
+
+
+def test_xlsx_is_byte_deterministic():
+    """openpyxl's wall-clock timestamps are pinned, so the same Table yields identical bytes,
+    and no current wall-clock year leaks into the package."""
+    from electricopilot.export.xlsx import render_table_xlsx
+    from electricopilot.export.tables import Table
+    t = Table("T", ["a", "b"], [[1, 2], [3, 4]], ["note"])
+    a, b = render_table_xlsx(t), render_table_xlsx(t)
+    assert a == b
+    core = zipfile.ZipFile(io.BytesIO(a)).read("docProps/core.xml").decode("utf-8")
+    assert "2020-01-01" in core and "2026" not in core
+
+
+def test_boq_and_journal_cable_lengths_reconcile():
+    """BoQ per-cable total equals the sum of the cable journal's per-row lengths (both round
+    per row) — no 0.1 m drift between the two bundled documents."""
+    board = _board()
+    report = build_project_report(board)
+    journal = build_cable_journal(board, report)
+    boq = build_boq(board, report)
+    # journal 'Длина с запасом, м' is column index 6; group by the section label (col 4)
+    from collections import defaultdict
+    by_section: dict[str, float] = defaultdict(float)
+    for row in journal.rows:
+        by_section[row[4]] += float(row[6])
+    boq_cables = {r[2]: r[4] for r in boq.rows if r[1] == "Кабель"}
+    # each BoQ cable line's metre total must equal the journal rows summed for that section
+    for name, qty in boq_cables.items():
+        section = name.split("Кабель ")[1].split(" мм²")[0] + " мм²"
+        assert abs(round(by_section[section], 1) - qty) < 0.05, name
