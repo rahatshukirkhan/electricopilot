@@ -102,6 +102,20 @@ class DataPack(BaseModel):
             )
         return float(table[k]), _cite(self.ampacity.get("_citation", {"standard": "n/a"}))
 
+    def has_ampacity(
+        self, method: InstallMethod, material: Material, insulation: Insulation,
+        n: int, size_mm2: float,
+    ) -> bool:
+        """True iff this exact section is present in the ampacity table for the given
+        method/material/insulation/n. Lets the sizer skip sections a real pack doesn't
+        cover (e.g. pue-rk's Табл.4/5 stop short of 300 mm² for in-conduit) while still
+        letting ambient/grouping off-table errors surface as hard failures (docs/12 §1.1)."""
+        try:
+            table = self.ampacity[method][material][insulation][str(n)]
+        except (KeyError, TypeError):
+            return False
+        return pack_key(size_mm2) in table
+
     def ambient_factor(self, insulation: Insulation, ambient_c: float) -> tuple[float, Citation]:
         table = self.ambient_correction.get(insulation)
         if not isinstance(table, dict):
