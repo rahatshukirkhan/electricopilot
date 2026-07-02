@@ -2,7 +2,9 @@
 
 Contents: report.md, sld.svg, sld.dxf, cable_journal.xlsx, boq.xlsx, project.json (multi-sheet
 diagrams add sld-2.*, sld-3.* …). Every document carries the advisory disclaimer and the data
-pack's provenance note. Zip entries use a fixed timestamp so the archive is reproducible.
+pack's provenance note. Zip entries use a fixed timestamp so the archive's own metadata is
+stable (SVG and XLSX payloads are deterministic; DXF payloads still embed ezdxf's own
+GUIDs/timestamps, so the archive is not byte-identical across runs).
 """
 from __future__ import annotations
 
