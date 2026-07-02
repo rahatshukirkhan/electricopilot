@@ -61,3 +61,10 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = "electricopilot.api"
 disallow_untyped_decorators = false
+
+# Don't analyze third-party export libs' bundled stubs — numpy 2.x (pulled in by ezdxf) uses
+# 3.12+ `type` statements that fail under our 3.11 target. We only use their public API.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*", "ezdxf", "ezdxf.*", "openpyxl", "openpyxl.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true

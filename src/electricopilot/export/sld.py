@@ -1,0 +1,126 @@
+"""Single-line diagram layout (docs/13): a distribution board report → one Drawing per sheet.
+
+A3 landscape (420×297 mm). Input on the left feeds a horizontal bus; outgoing circuits hang
+as evenly spaced vertical columns. Per circuit, top→down: breaker, RCD (if any), a rotated
+summary label (device/cable/length/IB/ΔU), the description and status. Wire colour encodes
+status. More than ~16 circuits split across sheets. Layout lives here; svg.py/dxf.py just render.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from .primitives import Drawing, Line, Text
+from .svg import render_svg
+from . import symbols
+
+SHEET_W, SHEET_H = 420.0, 297.0
+MARGIN = 12.0
+BUS_Y = 44.0
+BUS_X0, BUS_X1 = 26.0, SHEET_W - MARGIN - 4
+BREAKER_Y = 60.0
+RCD_Y = 76.0
+ARROW_Y = 218.0          # long drop fills the A3 sheet and clears the rotated summary label
+MAX_PER_SHEET = 16
+
+STATUS_COLOR = {"PASS": "#1f9d55", "FAIL": "#e5484d", "NEEDS_REVIEW": "#e6ad3c"}
+_STATUS_LABEL = {"PASS": "PASS", "FAIL": "FAIL", "NEEDS_REVIEW": "REVIEW"}
+
+
+def _fmt(v: Any) -> str:
+    if isinstance(v, float):
+        return f"{v:g}"
+    return str(v)
+
+
+def _device_label(spec: dict[str, Any]) -> str:
+    curve = f" {spec['curve']}" if spec.get("curve") else ""
+    return f"{spec['device_class']} {_fmt(spec['In_a'])}A{curve}"
+
+
+def _cable_label(spec: dict[str, Any]) -> str:
+    return (f"{spec['cores']} {_fmt(spec['section_mm2'])} мм² "
+            f"{spec['material']}/{spec['insulation']} · {spec['method']}")
+
+
+def _input_feed(project: dict[str, Any]) -> list[Any]:
+    supply = project.get("supply", {}) or {}
+    prims: list[Any] = [
+        Line(BUS_X0, 28.0, BUS_X0, BUS_Y, layer="BUS", width=1.2),
+        symbols.load_arrow(BUS_X0, 24.0)[0],  # incomer marker (reused triangle, pointing down)
+        Text(BUS_X0 - 2, 22.0, "Ввод", height=2.6, anchor="end"),
+        Text(BUS_X0 + 3, 34.0,
+             f"{_fmt(supply.get('voltage_v', 400))} В · {_fmt(supply.get('phases', 3))}ф · "
+             f"{supply.get('earthing', 'TN-C-S')}", height=2.2, anchor="start"),
+    ]
+    return prims
+
+
+def _draw_circuit(d: Drawing, x: float, row: dict[str, Any]) -> None:
+    spec = row.get("spec", {}) or {}
+    status = row.get("status", "")
+    color = STATUS_COLOR.get(status, "#7c8aa5")
+
+    d.add(Line(x, BUS_Y, x, ARROW_Y, layer="WIRES", color=color, width=0.4))
+    d.extend(symbols.breaker(x, BREAKER_Y))
+    if spec.get("rcd", {}).get("present"):
+        d.extend(symbols.rcd(x, RCD_Y))
+    d.extend(symbols.load_arrow(x, ARROW_Y))
+
+    d.add(Text(x, BUS_Y - 2.5, str(row.get("ref", "")), height=2.6, anchor="middle"))
+
+    # rotated (reads upward) summary beside the wire — compact for dense columns
+    summary = (f"{_device_label(spec)}"
+               f"{'  УЗО ' + _fmt(spec['rcd'].get('ma', 30)) + 'мА' if spec.get('rcd', {}).get('present') else ''}"
+               f"  ·  {_cable_label(spec)}"
+               f"  ·  L={_fmt(row.get('length_m', ''))}м"
+               f"  ·  IB={_fmt(row.get('IB_a', ''))}A ΔU={_fmt(row.get('dU_pct', ''))}%")
+    d.add(Text(x + 4.0, ARROW_Y - 6.0, summary, height=1.9, anchor="start", rotation=90))
+
+    desc = str(row.get("description", "") or "")
+    if desc:
+        d.add(Text(x, ARROW_Y + 8.0, desc[:22], height=2.2, anchor="middle"))
+    d.add(Text(x, ARROW_Y + 12.5, _STATUS_LABEL.get(status, status),
+               height=2.2, anchor="middle", color=color))
+
+
+def build_sld(project: dict[str, Any], report: dict[str, Any]) -> list[Drawing]:
+    """One Drawing per sheet. Empty board → a single sheet with just the frame."""
+    rows = report.get("rows", []) or []
+    chunks = [rows[i:i + MAX_PER_SHEET] for i in range(0, len(rows), MAX_PER_SHEET)] or [[]]
+    name = str(project.get("name", "") or "")
+    board_ref = str(project.get("board_ref", "") or "")
+
+    sheets: list[Drawing] = []
+    for si, chunk in enumerate(chunks):
+        d = Drawing(SHEET_W, SHEET_H)
+        d.extend(symbols.sheet_frame(
+            SHEET_W, SHEET_H,
+            title=f"{name} · {board_ref}".strip(" ·"),
+            subtitle=f"Однолинейная схема · лист {si + 1}/{len(chunks)}"))
+        d.extend(symbols.bus(BUS_X0, BUS_X1, BUS_Y))
+        d.extend(_input_feed(project))
+
+        n = len(chunk)
+        col_span = BUS_X1 - (BUS_X0 + 22.0)
+        for i, row in enumerate(chunk):
+            col_x = BUS_X0 + 22.0 + col_span * (i + 0.5) / max(n, 1)
+            _draw_circuit(d, col_x, row)
+        _draw_footer(d, report)
+        sheets.append(d)
+    return sheets
+
+
+def _draw_footer(d: Drawing, report: dict[str, Any]) -> None:
+    """Advisory disclaimer + data-pack provenance on every sheet (docs/13 §each doc carries it)."""
+    pack = report.get("norm_pack", {}) or {}
+    pack_s = f"норм-пакет: {pack.get('name', '?')} ({pack.get('status', '?')})" if pack else ""
+    d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 3.5,
+               "Рекомендательный расчёт ElectriCopilot — НЕ сертификация; требуется проверка и "
+               "подпись инженера.", height=2.2, anchor="start", color="#8a5a00"))
+    if pack_s:
+        d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 0.5, pack_s, height=2.0, anchor="start",
+                   color="#556"))
+
+
+def sld_sheets_svg(project: dict[str, Any], report: dict[str, Any]) -> list[str]:
+    return [render_svg(d) for d in build_sld(project, report)]

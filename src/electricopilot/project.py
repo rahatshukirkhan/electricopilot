@@ -81,6 +81,8 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         counts[res.overall_status] = counts.get(res.overall_status, 0) + 1
 
         sc = next((x for x in res.checks if x.name == "short_circuit"), None)
+        cab, sp = res.selected_cable, res.selected_protection
+        rcd_meta = meta.get("rcd") or {}
         rows.append({
             "id": c.get("id"), "ref": c.get("ref") or "",
             "description": req.load.description or "—",
@@ -88,10 +90,22 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
             "phase": phase, "IB_a": round(ib, 1),
             "device": _device_str(res), "rcd": _rcd_str(meta),
             "cable": _cable_str(res, meta), "length_m": req.installation.length_m,
-            "Iz_a": round(res.selected_cable.Iz_a, 1), "dU_pct": round(res.voltage_drop_pct, 2),
+            "Iz_a": round(cab.Iz_a, 1), "dU_pct": round(res.voltage_drop_pct, 2),
             "disc": (sc.detail if sc else "—"),
-            "status": res.overall_status, "governing": res.selected_cable.governing_constraint,
+            "status": res.overall_status, "governing": cab.governing_constraint,
             "signoff": (c.get("signoff") or {}).get("status", "UNSIGNED_ADVISORY"),
+            # structured fields for document export (docs/13); display strings above stay for UI
+            "spec": {
+                "section_mm2": cab.cross_section_mm2, "material": cab.material,
+                "insulation": cab.insulation, "method": req.installation.method,
+                "cores": meta.get("cores") or ("1P+N" if req.load.phases == 1 else "3P+N"),
+                "In_a": sp.In_a, "device_class": sp.device_class,
+                "curve": (getattr(req.protection, "trip_curve_type", "C")
+                          if sp.device_class in ("MCB", "MCCB") else None),
+                "rcd": {"present": bool(rcd_meta.get("present")),
+                        "type": rcd_meta.get("type"), "ma": rcd_meta.get("ma")},
+                "phases": req.load.phases,
+            },
         })
 
     vals = [phase_a["L1"], phase_a["L2"], phase_a["L3"]]
@@ -120,6 +134,7 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         "board": board, "rows": rows,
         "markdown": _render_markdown(project, board, rows, pack, provenance_note),
         "provenance_note": provenance_note, "disclaimer": DISCLAIMER,
+        "norm_pack": {"name": pack.meta.name, "status": pack.meta.status},
     }
 
 
