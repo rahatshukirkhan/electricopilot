@@ -8,21 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from .cable_journal import _margin
-from .tables import Table
+from .cable_journal import cable_margin
+from .tables import Table, fmt_num as _fmt
 
 _COLUMNS = ["№", "Категория", "Наименование", "Ед. изм.", "Кол-во"]
 
 
-def _fmt(v: Any) -> str:
-    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
-
-
 def _device_name(spec: dict[str, Any]) -> str:
     curve = f" {spec['curve']}" if spec.get("curve") else ""
+    poles = "1P" if spec.get("phases") == 1 else "3P"  # 1P vs 3P/4P are different products
     rcd = spec.get("rcd", {}) or {}
-    rcd_s = f" + УЗО {_fmt(rcd.get('ma', 30))}мА" if rcd.get("present") else ""
-    return f"{spec.get('device_class', '')} {_fmt(spec.get('In_a', ''))}A{curve}{rcd_s}"
+    rcd_s = f" + УЗО {_fmt(rcd.get('ma') or 30)}мА" if rcd.get("present") else ""
+    return f"{spec.get('device_class', '')} {_fmt(spec.get('In_a', ''))}A {poles}{curve}{rcd_s}"
 
 
 def _cable_name(spec: dict[str, Any]) -> str:
@@ -31,14 +28,17 @@ def _cable_name(spec: dict[str, Any]) -> str:
 
 
 def build_boq(project: dict[str, Any], report: dict[str, Any]) -> Table:
-    margin = _margin(project)
+    margin = cable_margin(project)
     devices: dict[str, int] = {}
     cables: dict[str, float] = {}
     for r in report.get("rows", []) or []:
         spec = r.get("spec", {}) or {}
-        devices[_device_name(spec)] = devices.get(_device_name(spec), 0) + 1
-        length = float(r.get("length_m", 0) or 0) * margin
-        cables[_cable_name(spec)] = cables.get(_cable_name(spec), 0.0) + length
+        dname = _device_name(spec)
+        devices[dname] = devices.get(dname, 0) + 1
+        cname = _cable_name(spec)
+        # round each row's with-margin length (matching cable_journal) BEFORE summing, so the
+        # BoQ total reconciles with the sum of the journal's per-row lengths.
+        cables[cname] = cables.get(cname, 0.0) + round(float(r.get("length_m", 0) or 0) * margin, 1)
 
     rows: list[list[Any]] = []
     i = 1

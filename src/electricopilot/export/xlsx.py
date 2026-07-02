@@ -1,17 +1,47 @@
 """Render a Table to a single-sheet XLSX workbook via openpyxl (docs/13).
 
 Layout: title row, bold header, data rows, then notes (disclaimer + provenance). Column widths
-are sized to content. Deterministic — no timestamps written into the sheet.
+are sized to content. Byte-deterministic: openpyxl's wall-clock package timestamps (docProps
+modified + every zip member date) are pinned to a fixed epoch by _normalize_xlsx.
 """
 from __future__ import annotations
 
 import io
+import re
+import zipfile
+from datetime import datetime, timezone
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .tables import Table
+
+# Fixed epoch pinned into docProps so the workbook is byte-deterministic (openpyxl otherwise
+# stamps datetime.now() into created/modified AND into every zip member's date, making the
+# same Table differ run-to-run). _normalize_xlsx() below rewrites both.
+_FIXED_DT = datetime(2020, 1, 1, tzinfo=timezone.utc)
+_FIXED_ZIP_DATE = (2020, 1, 1, 0, 0, 0)
+_MODIFIED_RE = re.compile(
+    rb"<dcterms:modified[^>]*>.*?</dcterms:modified>", re.DOTALL)
+_FIXED_MODIFIED = (b'<dcterms:modified xsi:type="dcterms:W3CDTF">'
+                   b"2020-01-01T00:00:00Z</dcterms:modified>")
+
+
+def _normalize_xlsx(raw: bytes) -> bytes:
+    """Rewrite the xlsx package with fixed member timestamps and a pinned core.xml modified date
+    so the workbook is byte-identical across runs (openpyxl bakes wall-clock times into both)."""
+    src = zipfile.ZipFile(io.BytesIO(raw))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for name in src.namelist():
+            data = src.read(name)
+            if name == "docProps/core.xml":
+                data = _MODIFIED_RE.sub(_FIXED_MODIFIED, data)
+            info = zipfile.ZipInfo(filename=name, date_time=_FIXED_ZIP_DATE)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(info, data)
+    return out.getvalue()
 
 _HEADER_FILL = PatternFill("solid", fgColor="E8EEF7")
 _TITLE_FONT = Font(bold=True, size=13)
@@ -21,6 +51,8 @@ _NOTE_FONT = Font(italic=True, size=9, color="555555")
 
 def render_table_xlsx(table: Table) -> bytes:
     wb = Workbook()
+    wb.properties.created = _FIXED_DT
+    wb.properties.modified = _FIXED_DT
     ws = wb.active
     ws.title = table.title[:31] or "Лист1"
     ncol = max(len(table.columns), 1)
@@ -57,4 +89,4 @@ def render_table_xlsx(table: Table) -> bytes:
     ws.freeze_panes = "A3"
     buf = io.BytesIO()
     wb.save(buf)
-    return buf.getvalue()
+    return _normalize_xlsx(buf.getvalue())

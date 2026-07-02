@@ -16,6 +16,8 @@ from .primitives import Circle, Drawing, Line, Polyline, Primitive, Rect, Text
 
 def _rgb(hex_color: str) -> int:
     h = hex_color.lstrip("#")
+    if len(h) == 3:  # shorthand #rgb → #rrggbb (Text colours like "#556" use it)
+        h = "".join(c * 2 for c in h)
     return (int(h[0:2], 16) << 16) | (int(h[2:4], 16) << 8) | int(h[4:6], 16)
 
 # Layer → ACI colour index (7=black/white, 8=dark gray, 9=light gray, 5=blue).
@@ -55,8 +57,9 @@ def render_dxf(dwg: Drawing) -> bytes:
             pts = [(x, fy(y)) for x, y in p.points]
             msp.add_lwpolyline(pts, close=p.closed, dxfattribs=_attribs(p, p.layer))
         elif isinstance(p, Text):
-            t = msp.add_text(p.text, dxfattribs={
-                "layer": p.layer, "height": p.height, "rotation": p.rotation})
+            attribs = _attribs(p, p.layer)  # carry Text.color → true_color (status/disclaimer)
+            attribs.update({"height": p.height, "rotation": p.rotation})
+            t = msp.add_text(p.text, dxfattribs=attribs)
             t.set_placement((p.x, fy(p.y)), align=_ALIGN[p.anchor])
         else:  # pragma: no cover - defensive
             raise TypeError(f"unknown primitive: {type(p).__name__}")

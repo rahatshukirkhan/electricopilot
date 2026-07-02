@@ -102,8 +102,10 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
                 "In_a": sp.In_a, "device_class": sp.device_class,
                 "curve": (getattr(req.protection, "trip_curve_type", "C")
                           if sp.device_class in ("MCB", "MCCB") else None),
+                # `or 30`: an absent/None/0 ma falls back to the standard 30 mA so exports never
+                # render "УЗО NoneмА" (a bare .get('ma', 30) does NOT fire on a present-but-None key).
                 "rcd": {"present": bool(rcd_meta.get("present")),
-                        "type": rcd_meta.get("type"), "ma": rcd_meta.get("ma")},
+                        "type": rcd_meta.get("type"), "ma": rcd_meta.get("ma") or 30},
                 "phases": req.load.phases,
             },
         })
