@@ -54,7 +54,10 @@ def size_case(pack: dict, name: str, *, P=None, amps=None, U, phases, pf, method
 
     chosen = None
     for S in sections:
-        iz = tbl[key(S)] * corr
+        it = tbl.get(key(S))
+        if it is None:
+            continue  # off-table for this pack (e.g. pue-rk doesn't cover every section/method)
+        iz = it * corr
         if iz >= req_iz - 1e-9 and vd(S) <= vd_limit + 1e-9 and (s_min is None or S >= s_min - 1e-9):
             chosen = (S, iz)
             break
@@ -80,6 +83,22 @@ _CASES: dict[str, list[dict]] = {
         dict(name="Case4 3ph SC-bound", amps=100, U=400, phases=3, pf=0.9, method="C",
              material="Cu", insulation="XLPE", ambient=30, grouping=1, length=30, device="MCB",
              iscc=20000, t=0.2),
+    ],
+    # pue-rk v1 scope: method C / Cu only (see tests/test_golden_cases.py PUE_RK_CASES note —
+    # B1/Al hit a real off-table gap in the frozen engine's sweep, not fixed here).
+    "pue-rk": [
+        dict(name="Case1 overload", P=4000, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=35, grouping=1, length=20, device="MCB",
+             iscc=None, t=0.1),
+        dict(name="Case2 gGfuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
+             material="Cu", insulation="PVC", ambient=40, grouping=5, length=50, device="gG_fuse",
+             iscc=2500, t=0.1),
+        dict(name="Case3 VD-bound", P=3500, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=80, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="Case4 SC-bound", amps=90, U=400, phases=3, pf=0.9, method="C",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=20, device="MCB",
+             iscc=18000, t=0.2),
     ],
 }
 
