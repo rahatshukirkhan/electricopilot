@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+def fmt_num(v: Any) -> str:
+    """Compact number formatting shared by every export renderer (SLD labels, journal, BoQ):
+    `:g` trims trailing zeros (20.0→'20', 2.5→'2.5'); non-numbers pass through as str."""
+    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
+
+
 @dataclass
 class Table:
     title: str

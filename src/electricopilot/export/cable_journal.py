@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .tables import Table
+from .tables import Table, fmt_num as _fmt
 
 DEFAULT_CABLE_MARGIN = 1.05
 _COLUMNS = [
@@ -18,7 +18,7 @@ _COLUMNS = [
 ]
 
 
-def _margin(project: dict[str, Any]) -> float:
+def cable_margin(project: dict[str, Any]) -> float:
     settings = project.get("export_settings") or {}
     try:
         m = float(settings.get("cable_margin", DEFAULT_CABLE_MARGIN))
@@ -27,12 +27,8 @@ def _margin(project: dict[str, Any]) -> float:
     return m if m >= 1.0 else DEFAULT_CABLE_MARGIN
 
 
-def _fmt(v: Any) -> str:
-    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
-
-
 def build_cable_journal(project: dict[str, Any], report: dict[str, Any]) -> Table:
-    margin = _margin(project)
+    margin = cable_margin(project)
     start = f"Щит {project.get('board_ref', '') or project.get('name', '')}".strip()
     rows: list[list[Any]] = []
     for r in report.get("rows", []) or []:

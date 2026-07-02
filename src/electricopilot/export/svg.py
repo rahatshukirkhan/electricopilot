@@ -18,7 +18,6 @@ _LAYER_STROKE = {
     "SYMBOLS": "#0b1220",
     "TEXT": "#0b1220",
 }
-_ANCHOR = {"start": "start", "middle": "middle", "end": "end"}
 
 
 def _n(v: float) -> str:
@@ -60,9 +59,9 @@ def _render_one(p: object) -> str:
         fill = c if p.closed else "none"
         return f'<{tag} points="{pts}" stroke="{c}" stroke-width="{_n(p.width)}" fill="{fill}"/>'
     if isinstance(p, Text):
-        anchor = _ANCHOR[p.anchor]
+        # Anchor literal values ("start"/"middle"/"end") are already the SVG text-anchor values.
         rot = "" if p.rotation == 0 else f' transform="rotate({_n(-p.rotation)} {_n(p.x)} {_n(p.y)})"'
         return (f'<text x="{_n(p.x)}" y="{_n(p.y)}" font-size="{_n(p.height)}" '
                 f'font-family="Helvetica, Arial, sans-serif" fill="{p.color}" '
-                f'text-anchor="{anchor}"{rot}>{escape(p.text)}</text>')
+                f'text-anchor="{p.anchor}"{rot}>{escape(p.text)}</text>')
     raise TypeError(f"unknown primitive: {type(p).__name__}")

@@ -11,6 +11,7 @@ from typing import Any
 
 from .primitives import Drawing, Line, Text
 from .svg import render_svg
+from .tables import fmt_num as _fmt
 from . import symbols
 
 SHEET_W, SHEET_H = 420.0, 297.0
@@ -24,12 +25,6 @@ MAX_PER_SHEET = 16
 
 STATUS_COLOR = {"PASS": "#1f9d55", "FAIL": "#e5484d", "NEEDS_REVIEW": "#e6ad3c"}
 _STATUS_LABEL = {"PASS": "PASS", "FAIL": "FAIL", "NEEDS_REVIEW": "REVIEW"}
-
-
-def _fmt(v: Any) -> str:
-    if isinstance(v, float):
-        return f"{v:g}"
-    return str(v)
 
 
 def _device_label(spec: dict[str, Any]) -> str:
@@ -61,7 +56,9 @@ def _draw_circuit(d: Drawing, x: float, row: dict[str, Any]) -> None:
     color = STATUS_COLOR.get(status, "#7c8aa5")
 
     d.add(Line(x, BUS_Y, x, ARROW_Y, layer="WIRES", color=color, width=0.4))
-    d.extend(symbols.breaker(x, BREAKER_Y))
+    # gG fuse gets the fuse symbol; MCB/MCCB the switch symbol
+    device_sym = symbols.fuse if spec.get("device_class") == "gG_fuse" else symbols.breaker
+    d.extend(device_sym(x, BREAKER_Y))
     if spec.get("rcd", {}).get("present"):
         d.extend(symbols.rcd(x, RCD_Y))
     d.extend(symbols.load_arrow(x, ARROW_Y))
@@ -70,7 +67,7 @@ def _draw_circuit(d: Drawing, x: float, row: dict[str, Any]) -> None:
 
     # rotated (reads upward) summary beside the wire — compact for dense columns
     summary = (f"{_device_label(spec)}"
-               f"{'  УЗО ' + _fmt(spec['rcd'].get('ma', 30)) + 'мА' if spec.get('rcd', {}).get('present') else ''}"
+               f"{'  УЗО ' + _fmt(spec['rcd'].get('ma') or 30) + 'мА' if spec.get('rcd', {}).get('present') else ''}"
                f"  ·  {_cable_label(spec)}"
                f"  ·  L={_fmt(row.get('length_m', ''))}м"
                f"  ·  IB={_fmt(row.get('IB_a', ''))}A ΔU={_fmt(row.get('dU_pct', ''))}%")
