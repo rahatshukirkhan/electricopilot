@@ -186,7 +186,11 @@ function rowHTML(r) {
     <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td>
     <td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td>
     <td class="st-cell ${r.status}">${r.status}${sign}</td>
-    <td><div class="rowact"><button data-edit="${r.id}" title="править">✎</button><button data-dupc="${r.id}" title="дублировать">⧉</button><button data-delc="${r.id}" title="удалить">✕</button></div></td></tr>`;
+    <td><div class="rowact">
+      <button data-edit="${r.id}" title="Править" aria-label="Править цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+      <button data-dupc="${r.id}" title="Дублировать" aria-label="Дублировать цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+      <button data-delc="${r.id}" title="Удалить" aria-label="Удалить цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"/></svg></button>
+    </div></td></tr>`;
 }
 function renderTotals(b) {
   const t = b.totals, d = b.demand, w = b.ways, ph = t.phase;
@@ -316,42 +320,42 @@ $('recalc').addEventListener('click', recompute);
 document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phases,#f_pf,#f_purpose,#f_method,#f_material,#f_insulation,#f_ambient,#f_grouping,#f_length,#f_device,#f_curve,#f_iscc,#f_tdisc,#f_vdlimit,#f_phase,#f_rcd,#f_rcd_ma').forEach(el => el.addEventListener('change', recompute));
 
 // ---------- charts (Plotly/SVG) ----------
-const DARK = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#c9d4e0', size: 12 }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
+const DARK = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#b8c6de', size: 12, family: "'Fira Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
   const traces = [
-    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#f85149', width: 2.5 } },
-    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4ea1ff', width: 1 }, showlegend: false },
-    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4ea1ff', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(78,161,255,.18)' },
+    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#f4574a', width: 2.5 } },
+    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4f9dff', width: 1 }, showlegend: false },
+    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4f9dff', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(79,157,255,.16)' },
   ];
   const shapes = [], anns = [];
-  vlines(shapes, t.markers.IB, '#8b98a9', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#d29922', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#f85149', 'dot', 'Iscc', anns);
-  const coord = t.coordinated === null ? '' : (t.coordinated ? '  ✅ иллюстративная проверка: OK' : '  ❌ не координируется (иллюстр.)');
-  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14 } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#2b3444' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#2b3444' }, shapes, annotations: anns }), CFG);
+  vlines(shapes, t.markers.IB, '#94a4c4', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#e6ad3c', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#f4574a', 'dot', 'Iscc', anns);
+  const coord = t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)');
+  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
-  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#4ea1ff' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#2b5f36' : '#3a3f4b'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, DARK, { title: { text: `Свип сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${s.governing})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#2b3444' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#d29922', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#d29922', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#4f9dff' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#2b6b45' : '#2a3550'));
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, DARK, { title: { text: `Свип сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${s.governing})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#1b2740' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#e6ad3c', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#e6ad3c', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
-  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#4ea1ff', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#e6edf3', size: 9 } }], Object.assign({}, DARK, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#2b3444' }, yaxis: { title: 'ΔU, %', gridcolor: '#2b3444' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#f85149', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#f85149', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#4f9dff', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#eaf0fb', size: 9 } }], Object.assign({}, DARK, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#1b2740' }, yaxis: { title: 'ΔU, %', gridcolor: '#1b2740' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#f4574a', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#f4574a', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#4ea1ff', '#3d6ea5', '#2b5f36'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, DARK, { title: { text: `Дерейтинг: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#2b3444' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#d29922', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#4f9dff', '#3f74c9', '#2b6b45'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, DARK, { title: { text: `Дерейтинг: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#1b2740' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#e6ad3c', width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
-  if (!s) return; const col = { PASS: '#3fb950', FAIL: '#f85149', NEEDS_REVIEW: '#d29922' }[s.status] || '#8b98a9';
+  if (!s) return; const col = { PASS: '#45c565', FAIL: '#f4574a', NEEDS_REVIEW: '#e6ad3c' }[s.status] || '#94a4c4';
   const bw = 150, gap = 46, y = 70, h = 78; let x = 20, svg = `<svg viewBox="0 0 ${20 + (bw + gap) * 4} 200" class="sld" style="max-width:100%">`;
   s.nodes.forEach((n, idx) => {
-    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#4ea1ff" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#1c2330" stroke="${idx === s.nodes.length - 1 ? col : '#2b3444'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#e6edf3" font-size="14" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#8b98a9" font-size="12" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
+    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#4f9dff" stroke-width="2"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#172234" stroke="${idx === s.nodes.length - 1 ? col : '#263650'}" stroke-width="2"/>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#eaf0fb" font-size="14" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#94a4c4" font-size="12" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
     x += bw + gap;
   });
   svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${s.status} · связывает: ${s.governing}</text></svg>`;
@@ -387,7 +391,7 @@ async function doExplain() {
 }
 async function doReview() {
   addMsg('bot', '⏳ ревьюер проверяет…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/verify', buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. ${v.deterministic_ok ? '✅' : '❌'}, LLM ${v.agrees ? 'согласен ✅' : 'НЕ согласен ❌'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
+  try { const j = await postJSON('/api/verify', buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
   catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
 }
 $('chatSend').addEventListener('click', chatSend);
