@@ -32,6 +32,13 @@ src/electricopilot/
 │   ├── explain.py    # AuditTrace → нарратив (Flash/Pro) ИЛИ шаблон (фолбэк)
 │   └── verify.py     # независимая проверка трассы (Pro) + детерм. проверка (всегда)
 ├── report.py         # SizingResult → Markdown/JSON отчёт с блоком подписи
+├── export/           # генерация документации (docs/13): SLD (SVG+DXF), журнал/спека (XLSX), zip
+│   ├── primitives.py # плоская геометрия (единый источник; рендереры тупые)
+│   ├── symbols.py    # условные обозначения (упрощ. ГОСТ 2.755)
+│   ├── sld.py        # layout однолинейки (A3, лист на 16 цепей)
+│   ├── svg.py / dxf.py   # рендер (детерм. SVG; DXF через ezdxf, слои, UTF-8)
+│   ├── cable_journal.py / boq.py / tables.py / xlsx.py  # журнал, спека, XLSX
+│   └── bundle.py     # zip: report.md + sld.svg/dxf + 2×xlsx + project.json
 ├── persistence.py    # Neon (если DATABASE_URL) ИЛИ JSONL в ./runs/
 ├── pipeline.py       # оркестрация size→explain→verify→провенанс (тестируема, client=None → фолбэк)
 ├── config.py         # чтение env/.env, флаги, режим (live/fallback)
