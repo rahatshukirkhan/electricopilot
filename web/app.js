@@ -99,9 +99,16 @@ function toast(msg, actionLabel, action) {
 function go(hash) { location.hash = hash; }
 function route() {
   const h = location.hash.replace(/^#/, '') || '/';
+  const mp = h.match(/^\/p\/([^/]+)\/print$/);
   const m = h.match(/^\/p\/([^/]+)(?:\/c\/([^/]+))?/);
-  ['dashboard', 'project', 'editor'].forEach(s => $('screen-' + s).hidden = true);
-  $('advisory').hidden = false;
+  ['dashboard', 'project', 'editor', 'print'].forEach(s => $('screen-' + s).hidden = true);
+  $('advisory').hidden = mp ? true : false;
+  if (mp) {
+    PROJ = projGet(mp[1]);
+    if (!PROJ) { go('/'); return; }
+    show('print'); renderPrint(); crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id], ['Печать', '']]); topBadge('');
+    return;
+  }
   if (!m) { renderDashboard(); show('dashboard'); crumbs([['Проекты', '#/']]); topBadge(''); return; }
   const pid = m[1], cid = m[2];
   PROJ = projGet(pid);
@@ -184,6 +191,7 @@ async function renderProject() {
   $('boardRollup').textContent = `щит: ${b.status}`; $('boardRollup').className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[b.status] || '');
   renderTotals(b);
   PROJ._lastReport = rep;
+  loadSldPreview();
 }
 function renderPackSelect() {
   const sel = $('b_pack');
@@ -232,6 +240,59 @@ $('btnNlAdd').addEventListener('click', nlAddCircuit);
 $('nlQuick').addEventListener('keydown', e => { if (e.key === 'Enter') nlAddCircuit(); });
 $('btnExportProj').addEventListener('click', () => exportProject(PROJ));
 $('btnReport').addEventListener('click', downloadReport);
+$('btnBundle').addEventListener('click', downloadBundle);
+$('btnPrint').addEventListener('click', () => { if (PROJ) go('/p/' + PROJ.id + '/print'); });
+$('btnSldRefresh').addEventListener('click', loadSldPreview);
+
+// ---------- single-line preview + document bundle (docs/13) ----------
+async function loadSldPreview() {
+  const el = $('sldPreview');
+  if (!PROJ || !PROJ.circuits.length) { el.innerHTML = '<span class="dim">Нет цепей — добавь цепь.</span>'; return; }
+  el.innerHTML = '<span class="dim">Строю однолинейку…</span>';
+  try {
+    const j = await postJSON('/api/project-sld', { project: PROJ });
+    const note = j.sheets > 1 ? `<div class="dim" style="margin-bottom:6px">Листов: ${j.sheets} (показан 1-й; полный набор — в пакете документов).</div>` : '';
+    el.innerHTML = note + (j.svg || '<span class="dim">пусто</span>');
+  } catch (e) { el.innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
+}
+async function downloadBundle() {
+  if (!PROJ || !PROJ.circuits.length) { toast('Добавь хотя бы одну цепь'); return; }
+  toast('Готовлю пакет документов…');
+  try {
+    const r = await fetch(API + '/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: PROJ }) });
+    if (!r.ok) { toast('⚠ ошибка экспорта: HTTP ' + r.status); return; }
+    const blob = await r.blob();
+    const name = (PROJ.board_ref || PROJ.name || 'board').replace(/\s+/g, '_') + '_пакет.zip';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Пакет документов скачан (SVG+DXF+XLSX+MD)');
+  } catch (e) { toast('⚠ ' + e.message); }
+}
+async function renderPrint() {
+  const root = $('printRoot');
+  root.innerHTML = '<p class="dim">Готовлю печатную страницу…</p>';
+  let rep, sld;
+  try {
+    rep = PROJ._lastReport || await postJSON('/api/project-report', { project: PROJ });
+    sld = await postJSON('/api/project-sld', { project: PROJ });
+  } catch (e) { root.innerHTML = `<p style="color:var(--bad)">⚠ ${esc(e.message)}</p>`; return; }
+  const b = rep.board, t = b.totals, sp = PROJ.supply || {};
+  const rows = rep.rows.map(r => `<tr><td>${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td><td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td><td>${esc(r.status)}</td></tr>`).join('');
+  root.innerHTML = `
+    <div class="print-actions no-print"><button id="doPrint" class="primary">🖨 Печать / Сохранить PDF</button> <button id="printBack" class="ghost">← Назад к щиту</button></div>
+    <h1 class="ptitle">${esc(PROJ.name)} <small>${esc(PROJ.board_ref || '')}</small></h1>
+    <p class="pmeta">Питание: ${esc(sp.voltage_v || 400)} В · ${esc(sp.phases || 3)}ф · ${esc(sp.earthing || 'TN-C-S')} · мест ${b.ways.used}/${b.ways.total} · норм-пакет: ${esc(rep.norm_pack?.name || '')} (${esc(rep.norm_pack?.status || '')})</p>
+    <h2>Таблица щита (panel schedule)</h2>
+    <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
+    <h2>Итоги щита</h2>
+    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
+    <h2>Однолинейная схема</h2>
+    <div class="print-sld">${sld.svg || ''}</div>
+    <p class="pnote">${esc(rep.provenance_note || '')}</p>
+    <p class="pnote"><b>${esc(rep.disclaimer || '')}</b></p>`;
+  $('doPrint').addEventListener('click', () => window.print());
+  $('printBack').addEventListener('click', () => go('/p/' + PROJ.id));
+}
 
 async function nlAddCircuit() {
   const text = $('nlQuick').value.trim(); if (!text) return;

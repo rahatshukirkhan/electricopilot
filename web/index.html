@@ -57,8 +57,10 @@
       </div>
       <div class="board-actions">
         <span id="boardRollup" class="badge">—</span>
+        <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)">📦 Пакет документов</button>
+        <button id="btnPrint" class="ghost" title="Печатная страница / PDF">🖨 Печать</button>
         <button id="btnReport" class="ghost">Отчёт по щиту</button>
-        <button id="btnExportProj" class="ghost">Экспорт</button>
+        <button id="btnExportProj" class="ghost">Экспорт .ecproj</button>
         <button id="btnBackDash" class="ghost">← К проектам</button>
       </div>
     </div>
@@ -80,7 +82,20 @@
     </div>
 
     <div class="totals" id="boardTotals"></div>
+
+    <section class="panel sld-panel">
+      <div class="panel-h">Однолинейная схема
+        <button id="btnSldRefresh" class="ghost" style="margin-left:auto">Обновить предпросмотр</button>
+      </div>
+      <div id="sldPreview" class="sld-preview"><span class="dim">Нажми «Обновить предпросмотр» или добавь цепь.</span></div>
+    </section>
+
     <div class="disclaimer" id="projDisclaimer"></div>
+  </section>
+
+  <!-- ============ PRINT ============ -->
+  <section id="screen-print" class="screen" hidden>
+    <div id="printRoot" class="print-root"></div>
   </section>
 
   <!-- ============ CIRCUIT EDITOR ============ -->
