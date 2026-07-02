@@ -29,6 +29,9 @@ runs/
 *.sqlite
 *.sqlite3
 
+# --- Node (not used by the build; guards against stray installs) ---
+node_modules/
+
 # --- OS / editor ---
 .DS_Store
 .idea/
