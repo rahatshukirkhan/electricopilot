@@ -7,11 +7,14 @@ Requires the `api` extra (fastapi + uvicorn). Run locally:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -19,6 +22,8 @@ from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
 from .exceptions import DataPackError, LlmConfigError, LlmError
+from .export import build_bundle
+from .export.sld import sld_sheets_svg
 from .guardrails import check_numeric_provenance
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
@@ -157,6 +162,39 @@ def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
     Norm pack is read from project.norm_pack (falls back to the default pack)."""
     pack = _pack_or_400(body.project.get("norm_pack"))
     return _catch_pack_error(build_project_report, body.project, data_pack=pack)  # type: ignore[no-any-return]
+
+
+def _report_for(project: dict[str, Any]) -> dict[str, Any]:
+    pack = _pack_or_400(project.get("norm_pack"))
+    return _catch_pack_error(build_project_report, project, data_pack=pack)  # type: ignore[no-any-return]
+
+
+def _safe_filename(project: dict[str, Any]) -> str:
+    base = str(project.get("board_ref") or project.get("name") or "board")
+    return re.sub(r"[^\w.-]+", "_", base).strip("_") or "board"
+
+
+@app.post("/api/project-sld")
+def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
+    """Single-line diagram preview: SVG of every sheet + count (docs/13)."""
+    report = _report_for(body.project)
+    svgs = sld_sheets_svg(body.project, report)
+    return {"svg": svgs[0] if svgs else "", "svgs": svgs, "sheets": len(svgs)}
+
+
+@app.post("/api/project-export")
+def project_export_endpoint(body: ProjectBody) -> Response:
+    """Full document package as a downloadable zip (docs/13)."""
+    pack = _pack_or_400(body.project.get("norm_pack"))
+    data: bytes = _catch_pack_error(build_bundle, body.project, data_pack=pack)
+    # HTTP headers are latin-1; RFC 5987 filename* must be percent-encoded UTF-8 (the board
+    # ref can be Cyrillic), with an ASCII filename= fallback for old clients.
+    fname = quote(f"{_safe_filename(body.project)}_пакет.zip")
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition":
+                 f"attachment; filename=\"bundle.zip\"; filename*=UTF-8''{fname}"},
+    )
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---
