@@ -340,15 +340,19 @@ const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
+  const deviceOff = t.device.available === false;
   const traces = [
     { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#f4574a', width: 2.5 } },
+  ];
+  if (!deviceOff) traces.push(
     { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4f9dff', width: 1 }, showlegend: false },
     { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4f9dff', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(79,157,255,.16)' },
-  ];
+  );
   const shapes = [], anns = [];
   vlines(shapes, t.markers.IB, '#94a4c4', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#e6ad3c', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#f4574a', 'dot', 'Iscc', anns);
-  const coord = t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)');
-  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#94a4c4', size: 12 } });
+  const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
+  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
