@@ -84,21 +84,31 @@ _CASES: dict[str, list[dict]] = {
              material="Cu", insulation="XLPE", ambient=30, grouping=1, length=30, device="MCB",
              iscc=20000, t=0.2),
     ],
-    # pue-rk v1 scope: method C / Cu only (see tests/test_golden_cases.py PUE_RK_CASES note —
-    # B1/Al hit a real off-table gap in the frozen engine's sweep, not fixed here).
+    # pue-rk v1 scope: methods C (открыто) + B1 (в трубе), Cu+Al, PVC (docs/12 §1.1). Method B1
+    # and material Al only cover part of the section series in the source — the engine sweeps
+    # the covered sections and falls back to the largest covered on FAIL (see docs/04 §4.6).
     "pue-rk": [
-        dict(name="Case1 overload", P=4000, U=230, phases=1, pf=1.0, method="C",
+        dict(name="C  Cu overload", P=4000, U=230, phases=1, pf=1.0, method="C",
              material="Cu", insulation="PVC", ambient=35, grouping=1, length=20, device="MCB",
              iscc=None, t=0.1),
-        dict(name="Case2 gGfuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
+        dict(name="C  Cu gGfuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
              material="Cu", insulation="PVC", ambient=40, grouping=5, length=50, device="gG_fuse",
              iscc=2500, t=0.1),
-        dict(name="Case3 VD-bound", P=3500, U=230, phases=1, pf=1.0, method="C",
+        dict(name="C  Cu VD-bound", P=3500, U=230, phases=1, pf=1.0, method="C",
              material="Cu", insulation="PVC", ambient=25, grouping=1, length=80, device="MCB",
              iscc=800, t=0.1),
-        dict(name="Case4 SC-bound", amps=90, U=400, phases=3, pf=0.9, method="C",
+        dict(name="C  Cu SC-bound", amps=90, U=400, phases=3, pf=0.9, method="C",
              material="Cu", insulation="PVC", ambient=25, grouping=1, length=20, device="MCB",
              iscc=18000, t=0.2),
+        dict(name="B1 Cu", P=3500, U=230, phases=1, pf=1.0, method="B1",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=30, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="C  Al gGfuse", P=15000, U=400, phases=3, pf=0.85, method="C",
+             material="Al", insulation="PVC", ambient=40, grouping=3, length=50, device="gG_fuse",
+             iscc=2500, t=0.1),
+        dict(name="B1 Al", P=6000, U=230, phases=1, pf=1.0, method="B1",
+             material="Al", insulation="PVC", ambient=25, grouping=1, length=20, device="MCB",
+             iscc=1000, t=0.1),
     ],
 }
 

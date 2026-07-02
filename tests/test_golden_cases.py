@@ -5,6 +5,7 @@ import pytest
 
 from electricopilot.data.loader import load_data_pack
 from electricopilot.engine import size
+from electricopilot.exceptions import DataPackError
 
 from .conftest import make_request
 
@@ -53,23 +54,26 @@ def test_every_step_has_citation():
         assert step.citations, f"step {step.id} lacks citation"
 
 
-# --- pue-rk (public_standard, docs/12 §1.1-1.2) -----------------------------------------
-# Scope v1: method C (открыто) / Cu only. Method B1 (в трубе) and material Al currently
-# raise DataPackError for most requests: sizer.py's sweep evaluates ALL standard_sections_mm2
-# unconditionally and pue-rk's B1/Al ampacity tables have honest source gaps at some sections
-# (Al starts at 2.5mm2, B1 tops out at 120mm2) — a real off-table limitation of the frozen
-# engine's sweep, not this pack. Flagged for a follow-up decision (see project notes); not
-# fixed here since docs/12 §0 forbids changing engine/* without sign-off.
-# Expected values independently recomputed via `scripts/reference_calc.py pue-rk` (docs/12 §1.2).
+# --- pue-rk (public_standard, docs/12 §1.1-1.2, docs/04 §4.6) ---------------------------
+# Scope v1: methods C (открыто) + B1 (в трубе), Cu+Al, PVC. B1/Al cover only part of the
+# section series in the source; the engine sweeps the covered sections (pack.has_ampacity)
+# instead of crashing on the first gap. Expected values were independently recomputed via
+# `scripts/reference_calc.py pue-rk` (docs/12 §1.2) — NOT copied from the engine's output.
 PUE_RK_CASES = [
-    ("pue1", dict(P=4000, U=230, ph=1, pf=1.0, ins="PVC", amb=35, grp=1, L=20, dev="MCB"),
+    ("C-Cu-overload", dict(method="C", material="Cu", P=4000, U=230, ph=1, pf=1.0, ins="PVC", amb=35, grp=1, L=20, dev="MCB"),
      dict(IB=17.39, In=20, S=1.5, Iz=20.01, vd=4.54, sadia=None, gov="overload_coordination")),
-    ("pue2", dict(P=15000, U=400, ph=3, pf=0.85, ins="PVC", amb=40, grp=5, L=50, dev="gG_fuse", iscc=2500),
+    ("C-Cu-fuse", dict(method="C", material="Cu", P=15000, U=400, ph=3, pf=0.85, ins="PVC", amb=40, grp=5, L=50, dev="gG_fuse", iscc=2500),
      dict(IB=25.47, In=32, S=10, Iz=42.98, vd=1.08, sadia=6.88, gov="overload_coordination")),
-    ("pue3", dict(P=3500, U=230, ph=1, pf=1.0, ins="PVC", amb=25, grp=1, L=80, dev="MCB", iscc=800),
+    ("C-Cu-vd", dict(method="C", material="Cu", P=3500, U=230, ph=1, pf=1.0, ins="PVC", amb=25, grp=1, L=80, dev="MCB", iscc=800),
      dict(IB=15.22, In=16, S=6, Iz=50.00, vd=3.97, sadia=2.20, gov="voltage_drop")),
-    ("pue4", dict(I=90, U=400, ph=3, pf=0.9, ins="PVC", amb=25, grp=1, L=20, dev="MCB", iscc=18000, t=0.2),
+    ("C-Cu-sc", dict(method="C", material="Cu", I=90, U=400, ph=3, pf=0.9, ins="PVC", amb=25, grp=1, L=20, dev="MCB", iscc=18000, t=0.2),
      dict(IB=90.00, In=100, S=70, Iz=270.00, vd=0.25, sadia=70.00, gov="short_circuit")),
+    ("B1-Cu", dict(method="B1", material="Cu", P=3500, U=230, ph=1, pf=1.0, ins="PVC", amb=25, grp=1, L=30, dev="MCB", iscc=800),
+     dict(IB=15.22, In=16, S=2.5, Iz=25.00, vd=3.57, sadia=2.20, gov="short_circuit")),
+    ("C-Al-fuse", dict(method="C", material="Al", P=15000, U=400, ph=3, pf=0.85, ins="PVC", amb=40, grp=3, L=50, dev="gG_fuse", iscc=2500),
+     dict(IB=25.47, In=32, S=16, Iz=59.25, vd=1.08, sadia=10.40, gov="short_circuit")),
+    ("B1-Al", dict(method="B1", material="Al", P=6000, U=230, ph=1, pf=1.0, ins="PVC", amb=25, grp=1, L=20, dev="MCB", iscc=1000),
+     dict(IB=26.09, In=32, S=10, Iz=42.00, vd=1.63, sadia=4.16, gov="overload_coordination")),
 ]
 
 
@@ -89,3 +93,31 @@ def test_golden_case_pue_rk(name, inp, exp):
         assert r.adiabatic_min_mm2 is None
     else:
         assert r.adiabatic_min_mm2 == pytest.approx(exp["sadia"], abs=0.02)
+
+
+def test_pue_rk_uncovered_method_errors():
+    """A method/material/insulation the pack doesn't cover at all raises a clean DataPackError
+    (honest off-table, docs/12 §1.1) — NOT a silent wrong answer. pue-rk has no XLPE/method-D."""
+    pack = load_data_pack("pue-rk")
+    with pytest.raises(DataPackError, match="no ampacity data"):
+        size(make_request(method="C", material="Cu", ins="XLPE", P=4000, U=230, ph=1, pf=1.0,
+                          amb=25, grp=1, L=20, dev="MCB"), data_pack=pack)
+
+
+def test_pue_rk_ambient_off_table_still_errors():
+    """Section-off-table is skipped, but ambient-off-table must STILL hard-error (it's a real
+    input the pack can't honor) — the sweep's has_ampacity gate must not swallow it."""
+    pack = load_data_pack("pue-rk")
+    with pytest.raises(DataPackError, match="ambient"):
+        size(make_request(method="C", material="Cu", ins="PVC", P=4000, U=230, ph=1, pf=1.0,
+                          amb=33, grp=1, L=20, dev="MCB"), data_pack=pack)
+
+
+def test_pue_rk_partial_coverage_fails_gracefully():
+    """When even the largest COVERED section can't satisfy the load (B1 tops out at 120 mm²),
+    the result is a clean FAIL at that section, not a crash on an uncovered larger section."""
+    pack = load_data_pack("pue-rk")
+    r = size(make_request(method="B1", material="Cu", ins="PVC", I=260, U=400, ph=3, pf=0.9,
+                          amb=25, grp=1, L=10, dev="MCB", iscc=5000), data_pack=pack)
+    assert r.overall_status == "FAIL"
+    assert r.selected_cable.cross_section_mm2 == 120  # largest B1/Cu section pue-rk covers
