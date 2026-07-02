@@ -268,7 +268,7 @@ def build_pack(html: str) -> dict:
     al_c, al_b1_n2, al_b1_n3 = _method_c_b1(al)
 
     cite_amp = {
-        "standard": "ПУЭ РК", "table": "Табл. 4 (Cu), Табл. 5 (Al)",
+        "standard": "ПУЭ РК", "table": "4 (Cu), 5 (Al)",
         "note": (
             "Cu: Табл.4, Al: Табл.5. 'открыто' не различает число жил (источник даёт одно "
             "значение вне зависимости от количества проводов) — метод C хранит одно и то же "
@@ -293,7 +293,7 @@ def build_pack(html: str) -> dict:
     ambient_correction = {
         "PVC": ambient,
         "_citation": {
-            "standard": "ПУЭ РК", "table": "Табл. 3",
+            "standard": "ПУЭ РК", "table": "3",
             "note": "Строка: условная температура среды +25°C, нормированная температура жил "
                     "+65°C (соответствует условиям Табл.4/5 по п.40 текста Правил).",
             "source_document": SOURCE_DOCUMENT, "source_url": SOURCE_URL,
@@ -311,7 +311,7 @@ def build_pack(html: str) -> dict:
     }
     k_material = dict(k)
     k_material["_citation"] = {
-        "standard": "ПУЭ РК", "table": "Табл. 48",
+        "standard": "ПУЭ РК", "table": "48",
         "note": "k для проводника, входящего в (много)жильный кабель — используется как k "
                 "адиабатики фазного проводника (аналог IEC 60364-4-43 Табл.43A).",
         "source_document": SOURCE_DOCUMENT, "source_url": SOURCE_URL,
@@ -356,8 +356,8 @@ def build_pack(html: str) -> dict:
             "coord_overload": {"standard": "IEC 60364-4-43", "clause": "433.1"},
             "voltage_drop": {"standard": "IEC 60364-5-52", "clause": "Annex G (informative)",
                               "note": "vd_limits_pct не из ПУЭ РК Прил.1, см. meta.source_note"},
-            "sc_adiabatic": {"standard": "ПУЭ РК", "table": "Табл. 48"},
-            "install_method": {"standard": "ПУЭ РК", "table": "Табл. 4, 5",
+            "sc_adiabatic": {"standard": "ПУЭ РК", "table": "48"},
+            "install_method": {"standard": "ПУЭ РК", "table": "4, 5",
                                 "note": "открыто->C, в трубе (одного N-жильного)->B1"},
         },
     }
