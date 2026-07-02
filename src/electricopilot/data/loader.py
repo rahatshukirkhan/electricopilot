@@ -25,7 +25,8 @@ from ..models import (
     Material,
 )
 
-DEFAULT_PACK_PATH = "electricopilot/data/iec_stub.json"
+DEFAULT_PACK_NAME = "iec-stub"
+PACKS_SUBDIR = "data/packs"
 
 
 def pack_key(x: float | int) -> str:
@@ -101,6 +102,20 @@ class DataPack(BaseModel):
             )
         return float(table[k]), _cite(self.ampacity.get("_citation", {"standard": "n/a"}))
 
+    def has_ampacity(
+        self, method: InstallMethod, material: Material, insulation: Insulation,
+        n: int, size_mm2: float,
+    ) -> bool:
+        """True iff this exact section is present in the ampacity table for the given
+        method/material/insulation/n. Lets the sizer skip sections a real pack doesn't
+        cover (e.g. pue-rk's Табл.4/5 stop short of 300 mm² for in-conduit) while still
+        letting ambient/grouping off-table errors surface as hard failures (docs/12 §1.1)."""
+        try:
+            table = self.ampacity[method][material][insulation][str(n)]
+        except (KeyError, TypeError):
+            return False
+        return pack_key(size_mm2) in table
+
     def ambient_factor(self, insulation: Insulation, ambient_c: float) -> tuple[float, Citation]:
         table = self.ambient_correction.get(insulation)
         if not isinstance(table, dict):
@@ -155,35 +170,62 @@ class DataPack(BaseModel):
         return entry, _cite(entry.get("citation", {"standard": "n/a"}))
 
 
-@lru_cache(maxsize=1)
-def _load_default_pack() -> DataPack:
-    """Load + validate the bundled default pack, cached for the process lifetime.
+def _packs_dir() -> Path:
+    """Resolve data/packs/ on disk (Vercel serverless: loader.py sits next to data/)."""
+    return Path(__file__).parent / "packs"
 
-    Safe to cache: the pack ships with the package (immutable at runtime) and the
-    engine only reads it through DataPack accessors, so a single shared instance is
-    fine. lru_cache does not cache exceptions, so a failed load is retried next call.
+
+@lru_cache(maxsize=None)
+def _load_pack_by_name(name: str) -> DataPack:
+    """Load + validate a bundled pack by name, cached for the process lifetime.
+
+    Safe to cache: bundled packs ship with the package (immutable at runtime) and the
+    engine only reads them through DataPack accessors, so one shared instance per name
+    is fine. lru_cache does not cache exceptions, so a failed load is retried next call.
     """
     try:
-        raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text(
-            encoding="utf-8"
-        )
+        raw = resources.files("electricopilot").joinpath(
+            f"{PACKS_SUBDIR}/{name}.json"
+        ).read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError, TypeError, AttributeError):
         # bundled-but-not-installed runtime (e.g. Vercel serverless): loader.py sits in
-        # the same dir as the pack, so resolve relative to __file__.
-        raw = (Path(__file__).parent / "iec_stub.json").read_text(encoding="utf-8")
+        # the same dir as data/, so resolve relative to __file__.
+        raw = (_packs_dir() / f"{name}.json").read_text(encoding="utf-8")
     return DataPack(**json.loads(raw))
 
 
-def load_data_pack(path: str | Path = DEFAULT_PACK_PATH) -> DataPack:
-    """Load and validate a norm data pack. The default pack resolves via
-    importlib.resources (independent of CWD) and is cached for the process; a
-    custom path always loads fresh from the filesystem."""
+def _is_pack_name(path: str | Path) -> bool:
+    """Bare pack name (no path separator, no .json suffix) resolves from data/packs/;
+    anything else is treated as a filesystem path (docs/12 §1.1)."""
+    s = str(path)
+    return "/" not in s and not s.endswith(".json")
+
+
+def load_data_pack(path: str | Path | None = None) -> DataPack:
+    """Load and validate a norm data pack. Bundled packs (bare name, e.g. 'pue-rk') resolve
+    via importlib.resources (independent of CWD) and are cached for the process; a
+    filesystem path (contains '/' or ends in .json) always loads fresh."""
     try:
-        if str(path) == DEFAULT_PACK_PATH:
-            return _load_default_pack()
+        if path is None:
+            return _load_pack_by_name(DEFAULT_PACK_NAME)
+        if _is_pack_name(path):
+            return _load_pack_by_name(str(path))
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return DataPack(**data)
     except DataPackError:
         raise
     except Exception as exc:  # noqa: BLE001 - wrap any load/parse/validate failure
         raise DataPackError(f"failed to load data pack from {path}: {exc}") from exc
+
+
+def list_packs() -> list[DataPackMeta]:
+    """Enumerate bundled packs in data/packs/ (docs/12 §1.1), for GET /api/packs and CLI."""
+    try:
+        names = sorted(
+            p.name.removesuffix(".json")
+            for p in resources.files("electricopilot").joinpath(PACKS_SUBDIR).iterdir()
+            if p.name.endswith(".json")
+        )
+    except (FileNotFoundError, ModuleNotFoundError, TypeError, AttributeError, NotADirectoryError):
+        names = sorted(p.stem for p in _packs_dir().glob("*.json"))
+    return [_load_pack_by_name(n).meta for n in names]

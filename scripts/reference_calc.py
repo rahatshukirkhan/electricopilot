@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Independent reference calculator — a SECOND implementation of the sizing math,
-used to cross-check the engine's golden cases against the synthetic data pack.
+used to cross-check the engine's golden cases against a data pack.
 
 This intentionally does NOT import electricopilot.engine (that would be circular).
-It reads the same iec_stub.json and recomputes IB / In / IZ / ΔU / adiabatic from
-scratch. Golden tests assert the doc-06 constants; this script is a human-facing
-recompute you can eyeball.
+It reads a data/packs/<name>.json pack and recomputes IB / In / IZ / ΔU / adiabatic
+from scratch. Golden tests assert the doc-06 / doc-12 constants; this script is a
+human-facing recompute you can eyeball, and per docs/12 §1.2 the source of truth for
+a NEW pack's golden expectations (never copy them from the engine's own output).
 
-Usage:  uv run python scripts/reference_calc.py
+Usage:  uv run python scripts/reference_calc.py [pack-name]   # default: iec-stub
 """
 from __future__ import annotations
 
 import json
 import math
+import sys
 from importlib import resources
 
 
@@ -20,8 +22,8 @@ def key(x: float) -> str:
     return format(float(x), "g")
 
 
-def load_pack() -> dict:
-    raw = resources.files("electricopilot").joinpath("data/iec_stub.json").read_text("utf-8")
+def load_pack(name: str = "iec-stub") -> dict:
+    raw = resources.files("electricopilot").joinpath(f"data/packs/{name}.json").read_text("utf-8")
     return json.loads(raw)
 
 
@@ -52,7 +54,10 @@ def size_case(pack: dict, name: str, *, P=None, amps=None, U, phases, pf, method
 
     chosen = None
     for S in sections:
-        iz = tbl[key(S)] * corr
+        it = tbl.get(key(S))
+        if it is None:
+            continue  # off-table for this pack (e.g. pue-rk doesn't cover every section/method)
+        iz = it * corr
         if iz >= req_iz - 1e-9 and vd(S) <= vd_limit + 1e-9 and (s_min is None or S >= s_min - 1e-9):
             chosen = (S, iz)
             break
@@ -61,21 +66,63 @@ def size_case(pack: dict, name: str, *, P=None, amps=None, U, phases, pf, method
           f"VD={vd(S):4.2f}% Sadia={(s_min or 0):5.2f}")
 
 
+# One demo case set per bundled pack — each case's method/material/insulation/ambient/
+# grouping must exist in that pack's own tables (packs are not required to cover the
+# same domain, docs/12 §1.1 off-table policy).
+_CASES: dict[str, list[dict]] = {
+    "iec-stub": [
+        dict(name="Case1 1ph overload-bound", P=4600, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=35, grouping=1, length=25, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="Case2 3ph gG-fuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
+             material="Cu", insulation="XLPE", ambient=40, grouping=3, length=50, device="gG_fuse",
+             iscc=2500, t=0.1),
+        dict(name="Case3 1ph VD-bound", P=4600, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=30, grouping=1, length=60, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="Case4 3ph SC-bound", amps=100, U=400, phases=3, pf=0.9, method="C",
+             material="Cu", insulation="XLPE", ambient=30, grouping=1, length=30, device="MCB",
+             iscc=20000, t=0.2),
+    ],
+    # pue-rk v1 scope: methods C (открыто) + B1 (в трубе), Cu+Al, PVC (docs/12 §1.1). Method B1
+    # and material Al only cover part of the section series in the source — the engine sweeps
+    # the covered sections and falls back to the largest covered on FAIL (see docs/04 §4.6).
+    "pue-rk": [
+        dict(name="C  Cu overload", P=4000, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=35, grouping=1, length=20, device="MCB",
+             iscc=None, t=0.1),
+        dict(name="C  Cu gGfuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
+             material="Cu", insulation="PVC", ambient=40, grouping=5, length=50, device="gG_fuse",
+             iscc=2500, t=0.1),
+        dict(name="C  Cu VD-bound", P=3500, U=230, phases=1, pf=1.0, method="C",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=80, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="C  Cu SC-bound", amps=90, U=400, phases=3, pf=0.9, method="C",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=20, device="MCB",
+             iscc=18000, t=0.2),
+        dict(name="B1 Cu", P=3500, U=230, phases=1, pf=1.0, method="B1",
+             material="Cu", insulation="PVC", ambient=25, grouping=1, length=30, device="MCB",
+             iscc=800, t=0.1),
+        dict(name="C  Al gGfuse", P=15000, U=400, phases=3, pf=0.85, method="C",
+             material="Al", insulation="PVC", ambient=40, grouping=3, length=50, device="gG_fuse",
+             iscc=2500, t=0.1),
+        dict(name="B1 Al", P=6000, U=230, phases=1, pf=1.0, method="B1",
+             material="Al", insulation="PVC", ambient=25, grouping=1, length=20, device="MCB",
+             iscc=1000, t=0.1),
+    ],
+}
+
+
 def main() -> None:
-    pack = load_pack()
+    pack_name = sys.argv[1] if len(sys.argv) > 1 else "iec-stub"
+    pack = load_pack(pack_name)
     print("pack:", pack["meta"]["name"], pack["meta"]["version"], f"({pack['meta']['status']})\n")
-    size_case(pack, "Case1 1ph overload-bound", P=4600, U=230, phases=1, pf=1.0, method="C",
-              material="Cu", insulation="PVC", ambient=35, grouping=1, length=25, device="MCB",
-              iscc=800, t=0.1)
-    size_case(pack, "Case2 3ph gG-fuse-bound", P=15000, U=400, phases=3, pf=0.85, method="C",
-              material="Cu", insulation="XLPE", ambient=40, grouping=3, length=50, device="gG_fuse",
-              iscc=2500, t=0.1)
-    size_case(pack, "Case3 1ph VD-bound", P=4600, U=230, phases=1, pf=1.0, method="C",
-              material="Cu", insulation="PVC", ambient=30, grouping=1, length=60, device="MCB",
-              iscc=800, t=0.1)
-    size_case(pack, "Case4 3ph SC-bound", amps=100, U=400, phases=3, pf=0.9, method="C",
-              material="Cu", insulation="XLPE", ambient=30, grouping=1, length=30, device="MCB",
-              iscc=20000, t=0.2)
+    cases = _CASES.get(pack_name)
+    if not cases:
+        print(f"(no reference cases wired up yet for pack '{pack_name}' — add to _CASES)")
+        return
+    for case in cases:
+        size_case(pack, case.pop("name"), **case)
 
 
 if __name__ == "__main__":

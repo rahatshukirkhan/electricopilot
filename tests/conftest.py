@@ -22,8 +22,9 @@ def make_request(**k) -> SizingRequest:
     return SizingRequest(
         load=LoadSpec(power_w=k.get("P"), current_a=k.get("I"), voltage_v=k["U"],
                       phases=k["ph"], power_factor=k["pf"], purpose=k.get("purpose", "power")),
-        installation=InstallationConditions(method="C", material="Cu", insulation=k["ins"],
-                      ambient_temp_c=k["amb"], grouping_circuits=k["grp"], length_m=k["L"]),
+        installation=InstallationConditions(
+            method=k.get("method", "C"), material=k.get("material", "Cu"), insulation=k["ins"],
+            ambient_temp_c=k["amb"], grouping_circuits=k["grp"], length_m=k["L"]),
         protection=ProtectionSpec(device_class=k["dev"], prospective_fault_current_a=k.get("iscc"),
                       disconnection_time_s=k.get("t", 0.1)))
 

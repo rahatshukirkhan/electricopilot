@@ -8,7 +8,7 @@ from typing import Optional
 import typer
 
 from .config import get_config
-from .data.loader import DataPack, load_data_pack
+from .data.loader import DataPack, list_packs, load_data_pack
 from .llm.client import OpenRouterClient
 from .models import (
     InstallationConditions,
@@ -84,7 +84,9 @@ def size(
     iscc: Optional[float] = typer.Option(None, help="ток КЗ, А"),
     tdisc: float = typer.Option(0.1, help="время отключения, с"),
     vdlimit: Optional[float] = typer.Option(None, help="предел ΔU, %"),
-    data_pack: Optional[str] = typer.Option(None, "--data-pack", help="альтернативный норм-пакет"),
+    data_pack: Optional[str] = typer.Option(
+        None, "--data-pack", help="норм-пакет: имя из data/packs/ (напр. pue-rk) или путь к JSON"
+    ),
     explain: bool = typer.Option(False, "--explain", help="добавить объяснение"),
     verify: bool = typer.Option(False, "--verify", help="добавить независимую проверку"),
     fmt: str = typer.Option("md", "--format", help="md|json"),
@@ -143,6 +145,13 @@ def demo(live: bool = typer.Option(False, "--live", help="использоват
     raise typer.Exit(_finish(req, client=client, data_pack=_load_pack(data_pack),
                              explain=True, verify=True, sign=None, fmt="md", out=None,
                              prefer_jsonl=not live))
+
+
+@app.command()
+def packs() -> None:
+    """Список доступных норм-пакетов (data/packs/)."""
+    for meta in list_packs():
+        typer.echo(f"{meta.name:16} {meta.version:8} {meta.status:16} {meta.source_note}")
 
 
 @app.command()

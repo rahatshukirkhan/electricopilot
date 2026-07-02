@@ -189,6 +189,7 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .board-sub{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .board-sub input{width:150px;font:500 12.5px var(--mono)}
 .board-sub .supply{color:var(--dim);font:500 12px var(--mono);background:var(--panel2);padding:5px 10px;border-radius:20px;border:1px solid var(--line)}
+.board-sub select#b_pack{width:150px;font:500 12.5px var(--mono)}
 .board-actions{margin-left:auto;display:flex;gap:9px;align-items:center;flex-shrink:0;flex-wrap:wrap}
 
 .sched-wrap{overflow:auto;max-height:calc(100vh - 250px);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);background:var(--panel)}

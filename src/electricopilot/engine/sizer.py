@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from ..data.loader import DataPack, load_data_pack
+from ..exceptions import DataPackError
 from ..models import (
     DISCLAIMER,
-    PROVENANCE_NOTE_ILLUSTRATIVE,
     Check,
     Citation,
     Governing,
@@ -15,6 +15,7 @@ from ..models import (
     SelectedProtection,
     SizingRequest,
     SizingResult,
+    provenance_note_for,
 )
 from .ampacity import corrected_ampacity
 from .current import design_current
@@ -51,12 +52,25 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         vd_limit = pack.vd_limit(load.purpose)
 
     sections = pack.sections()
+    # A real pack may cover a method only over part of the section series (e.g. pue-rk's
+    # in-conduit tables stop before 300 mm²). Sweep only the covered sections: a missing
+    # section simply isn't a selectable option. Ambient/grouping off-table still errors
+    # hard inside corrected_ampacity — has_ampacity only gates the per-section lookup.
+    n_cond = int(cond.loaded_conductors or (2 if load.phases == 1 else 3))
+    covered = [s for s in sections
+               if pack.has_ampacity(cond.method, cond.material, cond.insulation, n_cond, s)]
+    if not covered:  # method/material/insulation entirely absent → honest off-table error
+        raise DataPackError(
+            f"pack '{pack.meta.name}' has no ampacity data for method={cond.method}/"
+            f"{cond.material}/{cond.insulation}/{n_cond} conductors"
+        )
+
     s_amp: float | None = None
     s_vd: float | None = None
     s_sc: float | None = None
     chosen: dict[str, object] | None = None
 
-    for s in sections:
+    for s in covered:
         it, prod_k, iz, amp_step = corrected_ampacity(s, cond, pack)
         du_v, du_pct, vd_step = voltage_drop(load, cond, s, ib, pack)
         amp_ok = iz >= req_iz - EPS
@@ -73,8 +87,8 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
                       "du_pct": du_pct, "amp_step": amp_step, "vd_step": vd_step}
 
     passed = chosen is not None
-    if chosen is None:  # nothing in the series satisfies all active checks → FAIL
-        s = sections[-1]
+    if chosen is None:  # nothing in the covered series satisfies all active checks → FAIL
+        s = covered[-1]  # largest section this pack actually covers for the combination
         it, prod_k, iz, amp_step = corrected_ampacity(s, cond, pack)
         du_v, du_pct, vd_step = voltage_drop(load, cond, s, ib, pack)
         chosen = {"s": s, "it": it, "prod_k": prod_k, "iz": iz, "du_v": du_v,
@@ -161,7 +175,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         step_sc, summary_step,
     ]
 
-    note = PROVENANCE_NOTE_ILLUSTRATIVE if pack.meta.status == "illustrative" else ""
+    note = provenance_note_for(pack.meta)
     return SizingResult(
         request=request,
         selected_cable=SelectedCable(

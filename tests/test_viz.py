@@ -1,6 +1,7 @@
 """Studio visualization data (deterministic, docs/10)."""
 from __future__ import annotations
 
+from electricopilot.data.loader import load_data_pack
 from electricopilot.viz import build_visuals
 
 from .conftest import make_request
@@ -43,3 +44,21 @@ def test_derating_waterfall():
     assert len(d["stages"]) == 3
     assert d["stages"][0]["value"] >= d["stages"][-1]["value"]  # It ≥ Iz after derating
     assert abs(d["Iz_a"] - 44.55) < 0.1
+
+
+def test_build_visuals_pue_rk_b1_partial_coverage():
+    """pue-rk B1/Cu: viz must not crash on sections the pack doesn't cover (it stops at
+    120 mm²), and TCC degrades gracefully since pue-rk carries no device trip curves."""
+    pack = load_data_pack("pue-rk")
+    v = build_visuals(
+        make_request(method="B1", material="Cu", P=3500, U=230, ph=1, pf=1.0, ins="PVC",
+                     amb=25, grp=1, L=30, dev="MCB", iscc=800),
+        data_pack=pack)
+    assert v["result"]["overall_status"] == "PASS"
+    sections = [r["section_mm2"] for r in v["sweep"]["rows"]]
+    assert sections and max(sections) == 120  # only the B1-covered sections are swept
+    assert v["tcc"]["device"]["available"] is False  # no trip curves in pue-rk
+    assert len(v["tcc"]["cable"]["withstand"]) > 10  # real cable adiabatic curve still drawn
+    # public_standard → the public-source note, NOT the "synthetic values" illustrative one
+    assert "публичного государственного стандарта" in v["data_provenance_note"]
+    assert "СИНТЕТИЧЕСКИЕ" not in v["data_provenance_note"]

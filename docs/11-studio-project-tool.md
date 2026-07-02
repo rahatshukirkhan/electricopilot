@@ -21,7 +21,11 @@
 Ключи: `ec_v2_workspace`, `ec_v2_projects` (индекс), `ec_v2_project_<id>` (полный проект,
 атомарная запись). Legacy `ec_circuits` мигрируется один раз.
 
-- **Project**: `{id,name,board_ref,location,created_at,updated_at,supply{voltage_v,phases,ways_total,earthing,incomer,ipf_ka,method,material,insulation,ambient},diversity{factors},circuits[]}`.
+- **Project**: `{id,name,board_ref,location,created_at,updated_at,norm_pack,supply{voltage_v,phases,ways_total,earthing,incomer,ipf_ka,method,material,insulation,ambient},diversity{factors},circuits[]}`.
+- **norm_pack**: имя норм-пакета (`data/packs/<name>.json`, docs/12 §1.1); `null`/отсутствует →
+  дефолтный пакет (`iec-stub`). Выбирается селектором в шапке щита, применяется ко всем цепям
+  щита разом при пересчёте (`/api/project-report`) и при live-расчёте в редакторе цепи
+  (`/api/viz|explain|verify?pack=<name>`).
 - **Circuit**: `{id, ref, sort_index, request(SizingRequest), meta{phase,rcd{present,ma,type},diversity_category,cores}, result{status,section,In,IB,Iz,vd,governing}, signoff{status,engineer,license,signed_at,ack_illustrative}}`.
 - **meta** — только для щита/отчёта, движок их не использует (не меняем `models`/`engine`).
 
@@ -45,8 +49,10 @@
 ## 11.4 Бэкенд (добавка)
 
 `POST /api/project-report` — принимает проект, **пересчитывает каждую цепь реальным `size()`**
-(не доверяет клиентским снимкам), возвращает `{board{status,rollup,totals,demand,ways}, rows[],
-markdown, provenance_note, disclaimer}`. Существующие эндпоинты не меняются.
+(не доверяет клиентским снимкам) на паке из `project.norm_pack` (или дефолтном), возвращает
+`{board{status,rollup,totals,demand,ways}, rows[], markdown, provenance_note, disclaimer}`.
+`provenance_note` и Markdown-отчёт теперь пак-зависимы (`models.provenance_note_for`, docs/12
+§1.1) — пусты для `licensed`, а не всегда `PROVENANCE_NOTE_ILLUSTRATIVE`.
 
 ## 11.5 Экспорт / доверие
 

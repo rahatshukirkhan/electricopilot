@@ -13,6 +13,7 @@ from .data.loader import DataPack, load_data_pack
 from .engine import size
 from .engine.ampacity import corrected_ampacity
 from .engine.voltage_drop import voltage_drop
+from .exceptions import DataPackError
 from .models import Citation, InstallationConditions, SizingRequest, SizingResult
 
 _TMAX = 10000.0   # s, plot ceiling
@@ -44,7 +45,12 @@ def sweep(req: SizingRequest, result: SizingResult, pack: DataPack) -> dict[str,
     vd_limit = result.voltage_drop_limit_pct
     s_min = result.adiabatic_min_mm2
     rows = []
+    n_cond = int(cond.loaded_conductors or (2 if req.load.phases == 1 else 3))
     for s in pack.sections():
+        # Only sections this pack covers for the combination are real candidates; a partially
+        # populated pack (e.g. pue-rk B1/Al) would otherwise raise mid-sweep (docs/04 §4.6).
+        if not pack.has_ampacity(cond.method, cond.material, cond.insulation, n_cond, s):
+            continue
         it, _pk, iz, _ = corrected_ampacity(s, cond, pack)
         _dv, du_pct, _ = voltage_drop(req.load, cond, s, ib, pack)
         rows.append({
@@ -115,13 +121,21 @@ def tcc(req: SizingRequest, result: SizingResult, pack: DataPack) -> dict[str, A
     iscc = prot.prospective_fault_current_a
     S = result.selected_cable.cross_section_mm2
     k, k_c = pack.k_adiabatic(req.installation.material, req.installation.insulation)
-    params, tc_c = pack.trip_curve(dev)
+    # Device trip curves are illustrative device-standard shapes, not norm-table data — a pack
+    # focused on cable ampacity (e.g. pue-rk) may not carry them. Degrade gracefully: still
+    # draw the real cable adiabatic curve, just omit the device band with a note.
+    params: dict[str, Any] | None
+    tc_c: Citation | None
+    try:
+        params, tc_c = pack.trip_curve(dev)
+    except DataPackError:
+        params, tc_c = None, None
 
     hi = (iscc if iscc else In * 25) * 1.6
     grid = _logspace(max(ib * 0.7, In * 0.6), hi, 70)
 
     dev_min, dev_max = [], []
-    if dev in ("MCB", "MCCB"):
+    if params is not None and dev in ("MCB", "MCCB"):
         mrange = params["mag_multiple"].get(getattr(prot, "trip_curve_type", "C")) \
             or next(iter(params["mag_multiple"].values()))
         mL, mH = mrange
@@ -135,7 +149,7 @@ def tcc(req: SizingRequest, result: SizingResult, pack: DataPack) -> dict[str, A
                 dev_min.append([round(cur, 2), round(tf, 4)])
             if ts is not None:
                 dev_max.append([round(cur, 2), round(ts, 4)])
-    else:  # gG fuse
+    elif params is not None:  # gG fuse
         coef, exp, inst = params["coef"], params["exp"], params["instant_time_s"]
         for cur in grid:
             x = cur / In
@@ -152,15 +166,25 @@ def tcc(req: SizingRequest, result: SizingResult, pack: DataPack) -> dict[str, A
             cable.append([round(cur, 2), round(t, 4)])
 
     sc_check = next((c for c in result.checks if c.name == "short_circuit"), None)
+    device_available = params is not None
+    note = (
+        "Кривые аппарата — иллюстративные (синтетические), форма по методологии; "
+        "кривая кабеля — реальная адиабатика t=(k·S/I)²."
+        if device_available else
+        f"Норм-пакет «{pack.meta.name}» не содержит время-токовых кривых аппарата — "
+        "показана только кривая стойкости кабеля (реальная адиабатика t=(k·S/I)²)."
+    )
+    citations = [_c(k_c), _c(pack.citation("sc_adiabatic"))]
+    if tc_c is not None:
+        citations.insert(0, _c(tc_c))
     return {
         "device": {"class": dev, "curve_type": getattr(prot, "trip_curve_type", "C"),
-                   "min": dev_min, "max": dev_max},
+                   "available": device_available, "min": dev_min, "max": dev_max},
         "cable": {"section_mm2": S, "k": k, "withstand": cable},
         "markers": {"IB": round(ib, 2), "In": In, "Iscc": iscc},
         "coordinated": bool(sc_check.passed) if sc_check else None,
-        "note": "Кривые аппарата — иллюстративные (синтетические), форма по методологии; "
-                "кривая кабеля — реальная адиабатика t=(k·S/I)².",
-        "citations": [_c(tc_c), _c(k_c), _c(pack.citation("sc_adiabatic"))],
+        "note": note,
+        "citations": citations,
     }
 
 

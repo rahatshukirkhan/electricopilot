@@ -12,7 +12,7 @@ from typing import Any
 
 from .data.loader import DataPack, load_data_pack
 from .engine import size
-from .models import DISCLAIMER, PROVENANCE_NOTE_ILLUSTRATIVE, SizingRequest
+from .models import DISCLAIMER, SizingRequest, provenance_note_for
 
 _DEFAULT_DIVERSITY = {  # ILLUSTRATIVE (synthetic) demand factors by load category
     "lighting": 0.9, "socket": 0.5, "motor": 1.0, "power": 0.8, "general": 0.7,
@@ -115,14 +115,16 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         "ways": {"used": used, "total": ways_total, "spare": max(0, ways_total - used),
                  "spare_pct": round(max(0, ways_total - used) / ways_total * 100, 0) if ways_total else 0},
     }
+    provenance_note = provenance_note_for(pack.meta)
     return {
         "board": board, "rows": rows,
-        "markdown": _render_markdown(project, board, rows),
-        "provenance_note": PROVENANCE_NOTE_ILLUSTRATIVE, "disclaimer": DISCLAIMER,
+        "markdown": _render_markdown(project, board, rows, pack, provenance_note),
+        "provenance_note": provenance_note, "disclaimer": DISCLAIMER,
     }
 
 
-def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[dict[str, Any]]) -> str:
+def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[dict[str, Any]],
+                     pack: DataPack, provenance_note: str) -> str:
     supply = project.get("supply", {})
     t = board["totals"]
     L: list[str] = []
@@ -131,7 +133,8 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
     L.append("")
     L.append(f"> {DISCLAIMER}")
     L.append("")
-    L.append(f"**Статус щита:** {board['status']}  ·  цепей: {board['rollup']}")
+    L.append(f"**Статус щита:** {board['status']}  ·  цепей: {board['rollup']}  ·  "
+             f"норм-пакет: `{pack.meta.name}` ({pack.meta.status})")
     L.append(f"- Расположение: {project.get('location', '—')}")
     L.append(f"- Питание: {supply.get('voltage_v', 400):g} В, {supply.get('phases', 3)}ф, "
              f"заземление {supply.get('earthing', 'TN-C-S')}, мест {board['ways']['used']}/{board['ways']['total']}")
@@ -155,9 +158,10 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
              f"ток ввода ≈ {d['incomer_md_a']:g} A (df синтетические)")
     L.append(f"- Резерв мест: {board['ways']['spare']} из {board['ways']['total']}")
     L.append("")
-    L.append("## Провенанс данных")
-    L.append(f"> {PROVENANCE_NOTE_ILLUSTRATIVE}")
-    L.append("")
+    if provenance_note:
+        L.append("## Провенанс данных")
+        L.append(f"> {provenance_note}")
+        L.append("")
     L.append("## Подпись инженера")
     L.append("- Щит: **НЕ ПОДПИСАН** (UNSIGNED_ADVISORY) — требуется проверка и подпись по каждой цепи "
              "и по щиту квалифицированным инженером. Синтетические значения подлежат замене лицензионными.")

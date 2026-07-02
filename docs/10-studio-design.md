@@ -31,13 +31,16 @@
 
 ```
 GET  /api/health                        → {status, mode}
-POST /api/size      SizingRequest        → SizingResult
-POST /api/viz       SizingRequest        → {sweep, vd_profile, derating, tcc, sld} (детерм.)
+GET  /api/packs                         → [{name, version, status, source_note}]
+POST /api/size      SizingRequest        → SizingResult                  ?pack=<name>
+POST /api/viz       SizingRequest        → {sweep, vd_profile, derating, tcc, sld} (детерм.)  ?pack=<name>
 POST /api/intake    {text}               → SizingRequest            (Gemini Flash)
-POST /api/explain   SizingRequest        → {narrative, provenance}  (Gemini Flash)
-POST /api/verify    SizingRequest        → VerificationVerdict      (Gemini Pro + детерм.)
+POST /api/explain   SizingRequest        → {narrative, provenance}  (Gemini Flash)  ?pack=<name>
+POST /api/verify    SizingRequest        → VerificationVerdict      (Gemini Pro + детерм.)  ?pack=<name>
 ```
-Все ответы аудируемы: `viz`-данные несут `citations` и `data_provenance_note`.
+Все ответы аудируемы: `viz`-данные несут `citations` и `data_provenance_note`. `?pack=<name>`
+(имя из `data/packs/`, по умолчанию `iec-stub`) резолвится через `load_data_pack`; неизвестное
+имя/путь → `400`. Неизвестный запрос без `?pack=` считается на дефолтном паке.
 
 ## 10.4 Модель TCC (иллюстративная, помечена)
 
@@ -46,7 +49,12 @@ POST /api/verify    SizingRequest        → VerificationVerdict      (Gemini Pr
 - **gG-предохранитель:** обратнозависимая `t = Tf · (In/I)^m` (иллюстративно), гейты 1.6·In.
 - **Кабель:** `t = (k·S / I)²` (реальная адиабатика; k — синтетический из пакета).
 - Координация видна: полоса аппарата ниже/левее кривой кабеля на [IB, Iscc].
-- Параметры кривых — в норм-пакете (`trip_curves`), `source_note: SYNTHETIC`.
+- Параметры кривых аппарата — в норм-пакете (`trip_curves`), `source_note: SYNTHETIC`. Это
+  характеристики **аппарата** (форма по IEC 60898), а не норм-таблицы кабеля, поэтому пак,
+  сфокусированный на ампакитности (напр. `pue-rk`), может их **не содержать**. Тогда TCC
+  деградирует изящно: полоса аппарата не рисуется (`tcc.device.available=false`, пометка на
+  графике), а **реальная кривая стойкости кабеля** `t=(k·S/I)²` показывается по-прежнему —
+  движок/viz не падают (`viz.tcc` ловит off-table `trip_curve`).
 
 ## 10.5 Фронтенд (SPA, без сборки)
 

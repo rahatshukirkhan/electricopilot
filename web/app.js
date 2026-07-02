@@ -47,7 +47,7 @@ function blankRequest() {
 function blankProject(name) {
   return {
     schema_version: 2, id: uid('prj'), name: name || 'Новый щит', board_ref: 'DB-1', location: '',
-    created_at: nowISO(), updated_at: nowISO(),
+    created_at: nowISO(), updated_at: nowISO(), norm_pack: null,
     supply: { voltage_v: 400, phases: 3, ways_total: 12, earthing: 'TN-C-S', method: 'C', material: 'Cu', insulation: 'PVC', ambient_temp_c: 30 },
     diversity: { factors: { lighting: 0.9, socket: 0.5, motor: 1.0, power: 0.8, general: 0.7 } },
     circuits: [],
@@ -79,7 +79,12 @@ function sampleProject() {
 }
 
 // ---------- state ----------
-let PROJ = null, CID = null, VIZ = null, HEALTH = { mode: 'fallback' };
+let PROJ = null, CID = null, VIZ = null, HEALTH = { mode: 'fallback' }, PACKS = [];
+function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
+function packStatusBadge(el, status) {
+  el.textContent = { illustrative: 'синтетические', public_standard: 'публичный стандарт', licensed: 'лицензия' }[status] || status || '';
+  el.className = 'badge small ' + (status === 'illustrative' ? 'review' : (status ? 'pass' : ''));
+}
 
 // ---------- toast ----------
 let toastTimer;
@@ -162,7 +167,8 @@ async function renderProject() {
   crumbs([['Проекты', '#/'], [p.name, '#/p/' + p.id]]);
   $('b_name').value = p.name; $('b_ref').value = p.board_ref || ''; $('b_location').value = p.location || '';
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
-  $('projDisclaimer').textContent = 'Рекомендательный расчёт; синтетические значения норм; требуется подпись инженера по каждой цепи и по щиту.';
+  $('projDisclaimer').textContent = 'Рекомендательный расчёт; требуется подпись инженера по каждой цепи и по щиту.';
+  renderPackSelect();
   const body = $('scheduleBody');
   if (!p.circuits.length) { body.innerHTML = `<tr><td colspan="14" class="empty" style="border:none">Пусто — добавь цепь или опиши словами ниже.</td></tr>`; $('boardTotals').innerHTML = ''; topBadge(''); $('boardRollup').textContent = '—'; $('boardRollup').className = 'badge'; return; }
   body.innerHTML = `<tr><td colspan="14" style="color:var(--dim)">пересчёт цепей движком…</td></tr>`;
@@ -179,6 +185,14 @@ async function renderProject() {
   renderTotals(b);
   PROJ._lastReport = rep;
 }
+function renderPackSelect() {
+  const sel = $('b_pack');
+  const cur = PROJ.norm_pack || PACKS[0]?.name || '';
+  sel.innerHTML = PACKS.map(pk => `<option value="${esc(pk.name)}">${esc(pk.name)} (${esc(pk.version)})</option>`).join('');
+  sel.value = cur;
+  packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur)?.status);
+}
+$('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
 function rowHTML(r) {
   const sign = r.signoff === 'SIGNED' ? ' ✔' : '';
   return `<tr data-cid="${r.id}">
@@ -281,14 +295,15 @@ function fillForm(req, meta) {
 
 async function recompute() {
   let v;
-  try { v = await postJSON('/api/viz', buildRequest()); }
+  try { v = await postJSON('/api/viz' + packQuery(), buildRequest()); }
   catch (e) { toast('Ошибка расчёта: ' + e.message); return; }
   VIZ = v; renderAll();
 }
 function renderAll() {
   const r = VIZ.result; topBadge(r.overall_status);
   renderSummary(r); renderTCC(VIZ.tcc); renderSweep(VIZ.sweep); renderVD(VIZ.vd_profile); renderDerating(VIZ.derating); renderSLD(VIZ.sld); renderTrace(r);
-  $('provenance').textContent = '⚠ ' + (VIZ.data_provenance_note || '') + ' — «иллюстративная проверка», не данные производителя.';
+  const packNote = VIZ.data_provenance_note ? ('⚠ ' + VIZ.data_provenance_note) : `Норм-пакет «${r.data_pack.name}» (${r.data_pack.status}).`;
+  $('provenance').textContent = packNote + ' Не данные производителя оборудования.';
   relayoutActive();
 }
 function renderSummary(r) {
@@ -325,15 +340,19 @@ const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
+  const deviceOff = t.device.available === false;
   const traces = [
     { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#f4574a', width: 2.5 } },
+  ];
+  if (!deviceOff) traces.push(
     { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4f9dff', width: 1 }, showlegend: false },
     { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4f9dff', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(79,157,255,.16)' },
-  ];
+  );
   const shapes = [], anns = [];
   vlines(shapes, t.markers.IB, '#94a4c4', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#e6ad3c', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#f4574a', 'dot', 'Iscc', anns);
-  const coord = t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)');
-  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#94a4c4', size: 12 } });
+  const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
+  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
@@ -386,12 +405,12 @@ async function chatSend() {
 }
 async function doExplain() {
   addMsg('bot', '⏳ объясняю…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/explain', buildRequest()); busy.remove(); const n = j.narrative; const tag = n.model ? `${n.model}; провенанс ${n.provenance_ok ? 'OK' : 'FAIL ' + JSON.stringify(n.unverified_numbers)}` : 'шаблон (без ключа)'; addMsg('bot', esc(n.text), tag); }
+  try { const j = await postJSON('/api/explain' + packQuery(), buildRequest()); busy.remove(); const n = j.narrative; const tag = n.model ? `${n.model}; провенанс ${n.provenance_ok ? 'OK' : 'FAIL ' + JSON.stringify(n.unverified_numbers)}` : 'шаблон (без ключа)'; addMsg('bot', esc(n.text), tag); }
   catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
 }
 async function doReview() {
   addMsg('bot', '⏳ ревьюер проверяет…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/verify', buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
+  try { const j = await postJSON('/api/verify' + packQuery(), buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
   catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
 }
 $('chatSend').addEventListener('click', chatSend);
@@ -425,6 +444,7 @@ window.addEventListener('hashchange', route);
 async function boot() {
   toggleSrc(); toggleCurve(); wsGet(); migrateLegacy();
   try { HEALTH = await (await fetch(API + '/api/health')).json(); $('modeTag').textContent = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; } catch { $('modeTag').textContent = 'offline'; }
+  try { PACKS = await (await fetch(API + '/api/packs')).json(); } catch { PACKS = []; }
   if (HEALTH.mode === 'fallback') addMsg('bot', 'Ключ Gemini на сервере не задан — копилот в режиме фолбэка (NL-разбор недоступен, объяснение — шаблон, ревьюер — детерминированный). Расчёт и графики работают полностью.');
   else addMsg('bot', 'Опиши цепь словами или задай параметры — соберу расчёт с трассой до норм, интерактивные графики и проверку ревьюером.');
   route();
