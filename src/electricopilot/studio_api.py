@@ -10,14 +10,15 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .config import get_config
+from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
-from .exceptions import LlmConfigError, LlmError
+from .exceptions import DataPackError, LlmConfigError, LlmError
 from .guardrails import check_numeric_provenance
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
@@ -66,14 +67,27 @@ def health() -> dict[str, str]:
             "model_fast": cfg.model_fast, "model_strong": cfg.model_strong}
 
 
+@app.get("/api/packs")
+def packs_endpoint() -> list[dict[str, Any]]:
+    return [{"name": m.name, "version": m.version, "status": m.status,
+             "source_note": m.source_note} for m in list_packs()]
+
+
+def _pack_or_400(pack: Optional[str]) -> DataPack:
+    try:
+        return load_data_pack(pack) if pack else load_data_pack()
+    except DataPackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
 @app.post("/api/size", response_model=SizingResult)
-def size_endpoint(request: SizingRequest) -> SizingResult:
-    return size(request)
+def size_endpoint(request: SizingRequest, pack: Optional[str] = None) -> SizingResult:
+    return size(request, data_pack=_pack_or_400(pack))
 
 
 @app.post("/api/viz")
-def viz_endpoint(request: SizingRequest) -> dict[str, Any]:
-    return build_visuals(request)
+def viz_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
+    return build_visuals(request, data_pack=_pack_or_400(pack))
 
 
 @app.post("/api/intake")
@@ -92,9 +106,9 @@ def intake_endpoint(body: IntakeBody) -> dict[str, Any]:
 
 
 @app.post("/api/explain")
-def explain_endpoint(request: SizingRequest) -> dict[str, Any]:
+def explain_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
-    result = size(request)
+    result = size(request, data_pack=_pack_or_400(pack))
     if cfg.llm_available:
         try:
             narrative = explain_render(result, _client(), model=cfg.model_fast)
@@ -108,9 +122,9 @@ def explain_endpoint(request: SizingRequest) -> dict[str, Any]:
 
 
 @app.post("/api/verify")
-def verify_endpoint(request: SizingRequest) -> dict[str, Any]:
+def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
-    result = size(request)
+    result = size(request, data_pack=_pack_or_400(pack))
     det_ok = verify_deterministic_check(request, result)
     if cfg.llm_available:
         try:
@@ -129,8 +143,10 @@ class ProjectBody(BaseModel):
 
 @app.post("/api/project-report")
 def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
-    """Recompute every circuit of a board with the real engine → panel schedule + totals + report."""
-    return build_project_report(body.project)
+    """Recompute every circuit of a board with the real engine → panel schedule + totals + report.
+    Norm pack is read from project.norm_pack (falls back to the default pack)."""
+    pack = _pack_or_400(body.project.get("norm_pack"))
+    return build_project_report(body.project, data_pack=pack)
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---
