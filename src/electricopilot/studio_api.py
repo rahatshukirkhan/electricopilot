@@ -80,14 +80,24 @@ def _pack_or_400(pack: Optional[str]) -> DataPack:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
+def _catch_pack_error(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Off-table combinations (e.g. a real pack's partial section coverage) raise
+    DataPackError mid-calculation, not just at pack-resolution time — surface those as a
+    clean 400 too, instead of an unhandled 500 with a leaked stack trace."""
+    try:
+        return fn(*args, **kwargs)
+    except DataPackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
 @app.post("/api/size", response_model=SizingResult)
 def size_endpoint(request: SizingRequest, pack: Optional[str] = None) -> SizingResult:
-    return size(request, data_pack=_pack_or_400(pack))
+    return _catch_pack_error(size, request, data_pack=_pack_or_400(pack))  # type: ignore[no-any-return]
 
 
 @app.post("/api/viz")
 def viz_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
-    return build_visuals(request, data_pack=_pack_or_400(pack))
+    return _catch_pack_error(build_visuals, request, data_pack=_pack_or_400(pack))  # type: ignore[no-any-return]
 
 
 @app.post("/api/intake")
@@ -108,7 +118,7 @@ def intake_endpoint(body: IntakeBody) -> dict[str, Any]:
 @app.post("/api/explain")
 def explain_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
-    result = size(request, data_pack=_pack_or_400(pack))
+    result = _catch_pack_error(size, request, data_pack=_pack_or_400(pack))
     if cfg.llm_available:
         try:
             narrative = explain_render(result, _client(), model=cfg.model_fast)
@@ -124,7 +134,7 @@ def explain_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict
 @app.post("/api/verify")
 def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
-    result = size(request, data_pack=_pack_or_400(pack))
+    result = _catch_pack_error(size, request, data_pack=_pack_or_400(pack))
     det_ok = verify_deterministic_check(request, result)
     if cfg.llm_available:
         try:
@@ -146,7 +156,7 @@ def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
     """Recompute every circuit of a board with the real engine → panel schedule + totals + report.
     Norm pack is read from project.norm_pack (falls back to the default pack)."""
     pack = _pack_or_400(body.project.get("norm_pack"))
-    return build_project_report(body.project, data_pack=pack)
+    return _catch_pack_error(build_project_report, body.project, data_pack=pack)  # type: ignore[no-any-return]
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---
