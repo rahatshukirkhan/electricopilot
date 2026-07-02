@@ -22,8 +22,8 @@ from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
 from .exceptions import DataPackError, LlmConfigError, LlmError
-from .export import build_bundle
-from .export.sld import sld_sheets_svg
+from .export import build_bundle, build_sld
+from .export.svg import render_svg
 from .guardrails import check_numeric_provenance
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
@@ -156,17 +156,28 @@ class ProjectBody(BaseModel):
     project: dict[str, Any]
 
 
-@app.post("/api/project-report")
-def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
-    """Recompute every circuit of a board with the real engine → panel schedule + totals + report.
-    Norm pack is read from project.norm_pack (falls back to the default pack)."""
-    pack = _pack_or_400(body.project.get("norm_pack"))
-    return _catch_pack_error(build_project_report, body.project, data_pack=pack)  # type: ignore[no-any-return]
-
-
 def _report_for(project: dict[str, Any]) -> dict[str, Any]:
     pack = _pack_or_400(project.get("norm_pack"))
     return _catch_pack_error(build_project_report, project, data_pack=pack)  # type: ignore[no-any-return]
+
+
+def _sld_preview(project: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """First-sheet SVG + sheet count. Only sheet 0 is rendered — the preview/print show one
+    sheet; the full multi-sheet set lives in the export bundle (docs/13)."""
+    sheets = build_sld(project, report)
+    return {"svg": render_svg(sheets[0]) if sheets else "", "sheets": len(sheets)}
+
+
+@app.post("/api/project-report")
+def project_report_endpoint(body: ProjectBody, sld: bool = False) -> dict[str, Any]:
+    """Recompute every circuit of a board with the real engine → panel schedule + totals + report.
+    Norm pack is read from project.norm_pack (falls back to the default pack). With ?sld=1 the
+    single-line preview is computed from the SAME report, so the board view/print need one call
+    (one engine pass) instead of two."""
+    report = _report_for(body.project)
+    if sld:
+        report = {**report, "sld": _sld_preview(body.project, report)}
+    return report
 
 
 def _safe_filename(project: dict[str, Any]) -> str:
@@ -176,10 +187,8 @@ def _safe_filename(project: dict[str, Any]) -> str:
 
 @app.post("/api/project-sld")
 def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
-    """Single-line diagram preview: SVG of every sheet + count (docs/13)."""
-    report = _report_for(body.project)
-    svgs = sld_sheets_svg(body.project, report)
-    return {"svg": svgs[0] if svgs else "", "svgs": svgs, "sheets": len(svgs)}
+    """Single-line diagram preview: first-sheet SVG + sheet count (docs/13)."""
+    return _sld_preview(body.project, _report_for(body.project))
 
 
 @app.post("/api/project-export")

@@ -180,7 +180,8 @@ async function renderProject() {
   if (!p.circuits.length) { body.innerHTML = `<tr><td colspan="14" class="empty" style="border:none">Пусто — добавь цепь или опиши словами ниже.</td></tr>`; $('boardTotals').innerHTML = ''; topBadge(''); $('boardRollup').textContent = '—'; $('boardRollup').className = 'badge'; return; }
   body.innerHTML = `<tr><td colspan="14" style="color:var(--dim)">пересчёт цепей движком…</td></tr>`;
   let rep;
-  try { rep = await postJSON('/api/project-report', { project: p }); }
+  // ?sld=1 → the preview SVG comes back with the report (one server call / one engine pass).
+  try { rep = await postJSON('/api/project-report?sld=1', { project: p }); }
   catch (e) { body.innerHTML = `<tr><td colspan="14" style="color:var(--bad)">Ошибка пересчёта: ${esc(e.message)}</td></tr>`; return; }
   // sync snapshots back for dashboard rollup
   rep.rows.forEach(r => { const c = p.circuits.find(x => x.id === r.id); if (c) c.result = { status: r.status, section: null, In: null, IB: r.IB_a, Iz: r.Iz_a, vd: r.dU_pct, governing: r.governing }; });
@@ -190,8 +191,7 @@ async function renderProject() {
   topBadge(b.status);
   $('boardRollup').textContent = `щит: ${b.status}`; $('boardRollup').className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[b.status] || '');
   renderTotals(b);
-  PROJ._lastReport = rep;
-  loadSldPreview();
+  renderSldInto(rep.sld);
 }
 function renderPackSelect() {
   const sel = $('b_pack');
@@ -245,15 +245,18 @@ $('btnPrint').addEventListener('click', () => { if (PROJ) go('/p/' + PROJ.id + '
 $('btnSldRefresh').addEventListener('click', loadSldPreview);
 
 // ---------- single-line preview + document bundle (docs/13) ----------
-async function loadSldPreview() {
+function renderSldInto(sld) {  // sld = {svg, sheets} from the report (?sld=1) or /api/project-sld
+  const el = $('sldPreview');
+  if (!sld || !sld.svg) { el.innerHTML = '<span class="dim">Нет цепей — добавь цепь.</span>'; return; }
+  const note = sld.sheets > 1 ? `<div class="dim" style="margin-bottom:6px">Листов: ${sld.sheets} (показан 1-й; полный набор — в пакете документов).</div>` : '';
+  el.innerHTML = note + sld.svg;
+}
+async function loadSldPreview() {  // manual "Обновить предпросмотр" — fetches fresh
   const el = $('sldPreview');
   if (!PROJ || !PROJ.circuits.length) { el.innerHTML = '<span class="dim">Нет цепей — добавь цепь.</span>'; return; }
   el.innerHTML = '<span class="dim">Строю однолинейку…</span>';
-  try {
-    const j = await postJSON('/api/project-sld', { project: PROJ });
-    const note = j.sheets > 1 ? `<div class="dim" style="margin-bottom:6px">Листов: ${j.sheets} (показан 1-й; полный набор — в пакете документов).</div>` : '';
-    el.innerHTML = note + (j.svg || '<span class="dim">пусто</span>');
-  } catch (e) { el.innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
+  try { renderSldInto(await postJSON('/api/project-sld', { project: PROJ })); }
+  catch (e) { el.innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
 }
 async function downloadBundle() {
   if (!PROJ || !PROJ.circuits.length) { toast('Добавь хотя бы одну цепь'); return; }
@@ -261,21 +264,20 @@ async function downloadBundle() {
   try {
     const r = await fetch(API + '/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: PROJ }) });
     if (!r.ok) { toast('⚠ ошибка экспорта: HTTP ' + r.status); return; }
-    const blob = await r.blob();
     const name = (PROJ.board_ref || PROJ.name || 'board').replace(/\s+/g, '_') + '_пакет.zip';
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    download(name, await r.blob(), 'application/zip');
     toast('Пакет документов скачан (SVG+DXF+XLSX+MD)');
   } catch (e) { toast('⚠ ' + e.message); }
 }
 async function renderPrint() {
   const root = $('printRoot');
   root.innerHTML = '<p class="dim">Готовлю печатную страницу…</p>';
-  let rep, sld;
-  try {
-    rep = PROJ._lastReport || await postJSON('/api/project-report', { project: PROJ });
-    sld = await postJSON('/api/project-sld', { project: PROJ });
-  } catch (e) { root.innerHTML = `<p style="color:var(--bad)">⚠ ${esc(e.message)}</p>`; return; }
+  let rep;
+  // Always fetch a FRESH report (with the SLD) in one call — the print route reloads PROJ from
+  // localStorage, so a cached _lastReport would risk printing a stale schedule beside a fresh diagram.
+  try { rep = await postJSON('/api/project-report?sld=1', { project: PROJ }); }
+  catch (e) { root.innerHTML = `<p style="color:var(--bad)">⚠ ${esc(e.message)}</p>`; return; }
+  const sld = rep.sld || { svg: '' };
   const b = rep.board, t = b.totals, sp = PROJ.supply || {};
   const rows = rep.rows.map(r => `<tr><td>${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td><td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td><td>${esc(r.status)}</td></tr>`).join('');
   root.innerHTML = `
@@ -484,7 +486,7 @@ function toggleCurve() { $('wrap_curve').style.display = $('f_device').value ===
 $('f_srcType').addEventListener('change', toggleSrc); $('f_device').addEventListener('change', toggleCurve);
 
 // ---------- export / import / report ----------
-function download(name, text, type) { const b = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click(); }
+function download(name, data, type) { const b = data instanceof Blob ? data : new Blob([data], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function exportProject(p) { if (!p) return; download(`${(p.board_ref || p.name).replace(/\s+/g, '_')}.ecproj.json`, JSON.stringify(p, null, 2), 'application/json'); }
 function importProject(e) {
   const f = e.target.files[0]; if (!f) return; const rd = new FileReader();
@@ -493,7 +495,7 @@ function importProject(e) {
 }
 async function downloadReport() {
   toast('Готовлю отчёт по щиту…');
-  try { const rep = PROJ._lastReport || await postJSON('/api/project-report', { project: PROJ }); download(`${(PROJ.board_ref || PROJ.name).replace(/\s+/g, '_')}_отчёт.md`, rep.markdown, 'text/markdown'); }
+  try { const rep = await postJSON('/api/project-report', { project: PROJ }); download(`${(PROJ.board_ref || PROJ.name).replace(/\s+/g, '_')}_отчёт.md`, rep.markdown, 'text/markdown'); }
   catch (e) { toast('⚠ ' + e.message); }
 }
 
