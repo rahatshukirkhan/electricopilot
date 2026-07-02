@@ -32,27 +32,23 @@ app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
 
 
 def _allowed_origins() -> list[str]:
-    """Cross-origin allowlist for the API. The Studio UI is served same-origin
-    (const API = ''), so it never needs a CORS entry — this list only gates
-    *cross-origin* callers, which would otherwise burn the server-side LLM key
-    via /api/intake. Override in prod with the ALLOWED_ORIGINS env var
-    (comma-separated) to add a custom domain."""
-    raw = os.environ.get("ALLOWED_ORIGINS", "").strip()
-    if raw:
-        return [o.strip() for o in raw.split(",") if o.strip()]
-    return [
-        "https://electricopilot.vercel.app",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ]
+    """Cross-origin allowlist for the API, from ELECTRICOPILOT_ALLOWED_ORIGINS
+    (comma-separated). The Studio UI is served same-origin (const API = ''), so
+    Vercel routes and local uvicorn-with-static never need a CORS entry — this
+    only exists for a separately hosted frontend, and skipping it by default
+    avoids exposing the server-side LLM key to arbitrary origins."""
+    raw = os.environ.get("ELECTRICOPILOT_ALLOWED_ORIGINS", "").strip()
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins(),
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
-)
+_origins = _allowed_origins()
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+    )
 
 
 class IntakeBody(BaseModel):
