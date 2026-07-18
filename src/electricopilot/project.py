@@ -13,6 +13,7 @@ from typing import Any
 from .data.loader import DataPack, load_data_pack
 from .engine import size
 from .models import DISCLAIMER, SizingRequest, provenance_note_for
+from .topology import incomer_current_a, phase_imbalance_pct, validate_project_topology
 
 _DEFAULT_DIVERSITY = {  # ILLUSTRATIVE (synthetic) demand factors by load category
     "lighting": 0.9, "socket": 0.5, "motor": 1.0, "power": 0.8, "general": 0.7,
@@ -52,8 +53,8 @@ def _rcd_str(meta: dict[str, Any]) -> str:
 
 def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None = None) -> dict[str, Any]:
     pack = data_pack or load_data_pack(project.get("norm_pack"))
-    supply = project.get("supply", {})
-    u_ll = float(supply.get("voltage_v", 400) or 400)
+    topology = validate_project_topology(project)
+    supply = project.get("supply") or {}
     ways_total = int(supply.get("ways_total", max(12, len(project.get("circuits", [])))) or 12)
     diversity = {**_DEFAULT_DIVERSITY, **(project.get("diversity", {}) or {}).get("factors", {})}
 
@@ -63,9 +64,11 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     connected_kw = connected_kva = emd_kw = 0.0
     used_provenance_sections: set[str] = set()
 
-    for c in project.get("circuits", []):
+    for c, circuit_topology in zip(
+        project.get("circuits", []), topology.circuits, strict=True,
+    ):
         meta = c.get("meta", {}) or {}
-        req = SizingRequest.model_validate(c["request"])
+        req = circuit_topology.request
         res = size(req, data_pack=pack)
         used_provenance_sections.update(a.section for a in res.data_provenance.used_sections)
         ib = res.design_current_a
@@ -73,8 +76,8 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         connected_kw += kw
         connected_kva += kva
 
-        phase = meta.get("phase") or ("L1L2L3" if req.load.phases == 3 else "L1")
-        if req.load.phases == 3 or phase == "L1L2L3":
+        phase = circuit_topology.phase
+        if req.load.phases == 3:
             for p in phase_a:
                 phase_a[p] += ib
         else:
@@ -114,11 +117,9 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
             },
         })
 
-    vals = [phase_a["L1"], phase_a["L2"], phase_a["L3"]]
-    avg = sum(vals) / 3 if any(vals) else 0.0
-    imbalance = ((max(vals) - min(vals)) / avg * 100) if avg > 0 else 0.0
+    imbalance = phase_imbalance_pct(phase_a, topology.supply)
     emd_kva = emd_kw / 0.9 if emd_kw else 0.0  # nominal pf 0.9 for the estimate
-    incomer_md_a = emd_kva * 1000 / (math.sqrt(3) * u_ll) if u_ll else 0.0
+    incomer_md_a = incomer_current_a(emd_kva, topology.supply)
     used = len(project.get("circuits", []))
     data_provenance = (
         pack.assess_provenance(sorted(used_provenance_sections))
@@ -131,12 +132,15 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
 
     board = {
         "status": board_status, "rollup": counts,
+        "topology": topology.supply.model_dump(),
         "totals": {
             "connected_kw": round(connected_kw, 2), "connected_kva": round(connected_kva, 2),
             "phase": {p: {"A": round(phase_a[p], 1)} for p in phase_a},
             # The project report exposes only the measured value. Threshold evaluation
             # belongs to deterministic normcheck rule R05 and its selected data pack.
-            "imbalance_pct": round(imbalance, 1), "imbalance_flag": None,
+            "imbalance_pct": round(imbalance, 1) if imbalance is not None else None,
+            "imbalance_applicable": imbalance is not None,
+            "imbalance_flag": None,
         },
         "demand": {"emd_kw": round(emd_kw, 2), "emd_kva": round(emd_kva, 2),
                    "incomer_md_a": round(incomer_md_a, 1), "provenance": "illustrative",
@@ -183,7 +187,8 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
     L.append(f"**Статус щита:** {board['status']}  ·  цепей: {board['rollup']}")
     L.append(f"- {data_identity}")
     L.append(f"- Расположение: {project.get('location', '—')}")
-    L.append(f"- Питание: {supply.get('voltage_v', 400):g} В, {supply.get('phases', 3)}ф, "
+    topology = board["topology"]
+    L.append(f"- Питание: {topology['voltage_v']:g} В, {topology['phases']}ф, "
              f"заземление {supply.get('earthing', 'TN-C-S')}, мест {board['ways']['used']}/{board['ways']['total']}")
     L.append("")
     L.append("## Таблица щита (panel schedule)")
@@ -197,9 +202,13 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
     L.append("## Итоги щита")
     L.append(f"- Подключённая нагрузка: **{t['connected_kw']:g} кВт / {t['connected_kva']:g} кВА**")
     ph = t["phase"]
-    L.append(f"- Баланс фаз (реальный): L1={ph['L1']['A']:g} A · L2={ph['L2']['A']:g} A · "
-             f"L3={ph['L3']['A']:g} A · перекос {t['imbalance_pct']:g}% "
-             "(оценка порога — нормоконтроль R05)")
+    if t["imbalance_applicable"]:
+        L.append(f"- Баланс фаз (реальный): L1={ph['L1']['A']:g} A · L2={ph['L2']['A']:g} A · "
+                 f"L3={ph['L3']['A']:g} A · перекос {t['imbalance_pct']:g}% "
+                 "(оценка порога — нормоконтроль R05)")
+    else:
+        L.append(f"- Фазный ток (реальный): L1={ph['L1']['A']:g} A · "
+                 "перекос фаз неприменим к однофазному щиту (R05: not_applicable)")
     d = board["demand"]
     L.append(f"- Расчётная нагрузка (ИЛЛЮСТРАТИВНО): **{d['emd_kw']:g} кВт / {d['emd_kva']:g} кВА**, "
              f"ток ввода ≈ {d['incomer_md_a']:g} A (df синтетические)")

@@ -10,6 +10,12 @@ class DataPackError(ElectriCopilotError):
     """Norm data pack failed to load / validate, or an off-table lookup was requested."""
 
 
+class ProjectTopologyError(ElectriCopilotError):
+    """A project supply/circuit topology is internally inconsistent."""
+
+    code = "invalid_project_topology"
+
+
 class LlmConfigError(ElectriCopilotError):
     """LLM is misconfigured: no API key in live mode, or an unknown model slug (D10)."""
 

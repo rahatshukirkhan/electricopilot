@@ -21,7 +21,7 @@ from pydantic import BaseModel, ValidationError
 from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
-from .exceptions import DataPackError, LlmConfigError, LlmError
+from .exceptions import DataPackError, LlmConfigError, LlmError, ProjectTopologyError
 from .export import build_bundle, build_sld
 from .export.svg import render_svg
 from .guardrails import check_numeric_provenance
@@ -108,6 +108,17 @@ def _catch_pack_error(fn: Any, *args: Any, **kwargs: Any) -> Any:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
+def _catch_project_error(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Surface deterministic project validation as a stable typed 4xx response."""
+    try:
+        return _catch_pack_error(fn, *args, **kwargs)
+    except ProjectTopologyError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from None
+
+
 @app.post("/api/size", response_model=SizingResult)
 def size_endpoint(request: SizingRequest, pack: Optional[str] = None) -> SizingResult:
     return _catch_pack_error(size, request, data_pack=_pack_or_400(pack))  # type: ignore[no-any-return]
@@ -171,7 +182,9 @@ class ProjectBody(BaseModel):
 
 def _report_for(project: dict[str, Any]) -> dict[str, Any]:
     pack = _pack_or_400(project.get("norm_pack"))
-    return _catch_pack_error(build_project_report, project, data_pack=pack)  # type: ignore[no-any-return]
+    return _catch_project_error(  # type: ignore[no-any-return]
+        build_project_report, project, data_pack=pack,
+    )
 
 
 def _sld_preview(project: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
@@ -197,7 +210,7 @@ def project_report_endpoint(body: ProjectBody, sld: bool = False) -> dict[str, A
 def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
     """Run deterministic R01-R10 over fresh server-side board calculations (docs/14)."""
     pack = _pack_or_400(body.project.get("norm_pack"))
-    report = _catch_pack_error(build_normcheck_report, body.project, pack)
+    report = _catch_project_error(build_normcheck_report, body.project, pack)
     cfg = get_config()
     if cfg.llm_available:
         try:
@@ -225,7 +238,7 @@ def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
 def project_export_endpoint(body: ProjectBody) -> Response:
     """Full document package as a downloadable zip (docs/13)."""
     pack = _pack_or_400(body.project.get("norm_pack"))
-    data: bytes = _catch_pack_error(build_bundle, body.project, data_pack=pack)
+    data: bytes = _catch_project_error(build_bundle, body.project, data_pack=pack)
     # HTTP headers are latin-1; RFC 5987 filename* must be percent-encoded UTF-8 (the board
     # ref can be Cyrillic), with an ASCII filename= fallback for old clients.
     fname = quote(f"{_safe_filename(body.project)}_пакет.zip")

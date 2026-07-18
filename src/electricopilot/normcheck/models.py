@@ -27,6 +27,7 @@ class Finding(BaseModel):
     required: dict[str, Any] = Field(default_factory=dict)
     citation: Citation | None = None
     source_section: str
+    data_sections: list[str] = Field(default_factory=list)
     source_trusted: bool
     reason: str | None = None
 
@@ -43,6 +44,7 @@ class NormcheckReport(BaseModel):
     findings: list[Finding]
     summary: NormcheckSummary
     norm_pack: dict[str, str]
+    data_provenance: dict[str, Any]
     data_identity: str
     provenance_note: str
     disclaimer: str
@@ -79,5 +81,6 @@ class RuleSource:
     section: str
     config: dict[str, Any]
     citation: Citation
+    data_sections: tuple[str, ...]
     trusted: bool
     issues: tuple[str, ...]

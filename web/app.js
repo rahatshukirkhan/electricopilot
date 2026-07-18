@@ -220,12 +220,17 @@ function rowHTML(r) {
 }
 function renderTotals(b) {
   const t = b.totals, d = b.demand, w = b.ways, ph = t.phase;
-  const mx = Math.max(ph.L1.A, ph.L2.A, ph.L3.A, 1);
+  const phaseKeys = b.topology?.phases === 1 ? ['L1'] : ['L1', 'L2', 'L3'];
+  const mx = Math.max(...phaseKeys.map(k => ph[k].A), 1);
+  const imbalance = t.imbalance_applicable
+    ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}`
+    : 'однофазный щит · перекос неприменим (R05)';
+  const phaseTitle = b.topology?.phases === 1 ? 'Фазный ток (реальный)' : 'Баланс фаз (реальный)';
   $('boardTotals').innerHTML = `
     <div class="totbox"><h4>Подключённая нагрузка</h4><div class="big">${fmt(t.connected_kw)} кВт</div><div style="color:var(--dim)">${fmt(t.connected_kva)} кВА</div></div>
-    <div class="totbox"><h4>Баланс фаз (реальный)</h4>
-      <div class="phbar">${['L1', 'L2', 'L3'].map(k => `<div class="b" style="height:${Math.round(ph[k].A / mx * 100)}%"><span>${k}<br>${fmt(ph[k].A, 0)}A</span></div>`).join('')}</div>
-      <div style="margin-top:20px" class="${t.imbalance_flag ? 'warn' : ''}">перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}</div></div>
+    <div class="totbox"><h4>${phaseTitle}</h4>
+      <div class="phbar">${phaseKeys.map(k => `<div class="b" style="height:${Math.round(ph[k].A / mx * 100)}%"><span>${k}<br>${fmt(ph[k].A, 0)}A</span></div>`).join('')}</div>
+      <div style="margin-top:20px" class="${t.imbalance_flag ? 'warn' : ''}">${imbalance}</div></div>
     <div class="totbox"><h4>Расчётная нагрузка <span style="color:var(--warn)">(иллюстр.)</span></h4><div class="big">${fmt(d.emd_kw)} кВт</div><div style="color:var(--dim)">ток ввода ≈ ${fmt(d.incomer_md_a, 0)} A · df синтетические</div></div>
     <div class="totbox"><h4>Резерв мест</h4><div class="big">${w.spare} / ${w.total}</div><div style="color:var(--dim)">занято ${w.used}</div></div>`;
 }
@@ -337,7 +342,11 @@ async function downloadBundle() {
   toast('Готовлю пакет документов…');
   try {
     const r = await fetch(API + '/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: PROJ }) });
-    if (!r.ok) { toast('⚠ ошибка экспорта: HTTP ' + r.status); return; }
+    if (!r.ok) {
+      const payload = await r.json().catch(() => null);
+      toast('⚠ ошибка экспорта: ' + (payload?.detail?.message || payload?.detail || `HTTP ${r.status}`));
+      return;
+    }
     const name = (PROJ.board_ref || PROJ.name || 'board').replace(/\s+/g, '_') + '_пакет.zip';
     download(name, await r.blob(), 'application/zip');
     toast('Пакет документов скачан (SVG+DXF+XLSX+MD)');
@@ -362,7 +371,7 @@ async function renderPrint() {
     <h2>Таблица щита (panel schedule)</h2>
     <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Итоги щита</h2>
-    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
+    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
     <h2>Однолинейная схема</h2>
     <div class="print-sld">${sld.svg || ''}</div>
     <p class="pnote">${esc(rep.provenance_note || '')}</p>
@@ -576,7 +585,16 @@ async function downloadReport() {
 }
 
 // ---------- net ----------
-async function postJSON(url, body) { const r = await fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }
+async function postJSON(url, body) {
+  const r = await fetch(API + url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const payload = await r.json().catch(() => null);
+    throw new Error(payload?.detail?.message || payload?.detail || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
 
 // ---------- boot ----------
 window.addEventListener('hashchange', route);
