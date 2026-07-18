@@ -28,6 +28,7 @@
 | `observed`, `required` | `dict` | только детерминированные значения |
 | `citation` | `Citation | null` | источник правила, если он задан паком |
 | `source_section` | `str` | `normcheck.Rxx` |
+| `data_sections` | `list[str]` | числовые секции ядра, от которых зависит observed |
 | `source_trusted` | `bool` | результат провенанс-гейта для секции |
 | `reason` | `str | null` | код причины `not_checked` |
 
@@ -90,19 +91,25 @@ public-standard, `entered_by`, `verified_by`, `verified_at`. Недоверен�
 |---|---|---|---|---|
 | R01 | circuit | error | citation | свежий `SizingResult.overall_status` и governing |
 | R02 | circuit | error | `max_rcd_ma` | `purpose=socket`, `meta.rcd` |
-| R03 | circuit | error | `max_total_vd_pct_by_purpose` | `supply.feeder.{length_m,section_mm2,material}` |
+| R03 | circuit | error | `max_total_vd_pct_by_purpose` | `supply.feeder.{length_m,section_mm2,material}` и валидная топология |
 | R04 | circuit | warning | citation | `supply.incomer.In_a`, рассчитанный отходящий In |
-| R05 | board | warning | `max_imbalance_pct` | свежий фазный rollup |
+| R05 | board | warning | `max_imbalance_pct` | свежий 3ф rollup; для 1ф — `not_applicable` |
 | R06 | board | warning | `min_spare_pct` | `ways_total`, количество цепей |
 | R07 | circuit | warning | `motor_disallowed_curves` | purpose и `trip_curve_type` |
 | R08 | circuit | error | `min_al_section_mm2` | материал и рассчитанное сечение |
 | R09 | circuit | warning | citation | `prospective_fault_current_a` |
 | R10 | circuit | info | `pe_section_table` | `meta.pe_section_mm2` и рассчитанное фазное сечение |
 
-R03 вычисляет падение на фидере детерминированно по максимальному фактическому фазному
-току свежего report,
+R03 вычисляет падение на фидере детерминированно по току активных фаз свежего report,
 напряжению, длине, сечению и `pack.resistivity(material)`, затем складывает его с
-рассчитанным ΔU цепи. Нет любого обязательного поля — `missing_input`.
+рассчитанным ΔU цепи. Общий topology helper использует коэффициент `2` для 1ф и `√3` для
+3ф. Его `data_sections` включает `voltage_drop_limit` вместе с остальными секциями sizing,
+потому что выбранное сечение и наблюдаемое ΔU могут зависеть от лимита основного расчёта.
+Нет любого обязательного поля — `missing_input`; недоверенная зависимость — `not_checked`.
+
+R05 применим только к `supply.phases=3`. Для 1ф report возвращает
+`imbalance_applicable=false`, а finding — `status=not_checked`, `reason=not_applicable`; L2/L3
+не участвуют в среднем и не создают ложное нарушение.
 
 `pe_section_table` — упорядоченный список строк. Каждая строка задаёт границу
 `phase_max_mm2` (последняя может быть `null`) и ровно одно из:
@@ -117,6 +124,7 @@ R03 вычисляет падение на фидере детерминиров
   "findings": [],
   "summary": {"errors": 0, "warnings": 0, "infos": 0, "not_checked": 10, "total": 10},
   "norm_pack": {"name": "iec-stub", "version": "0.1.0", "status": "illustrative"},
+  "data_provenance": {"verification_status": "NEEDS_REVIEW", "used_sections": []},
   "disclaimer": "…",
   "signoff_notice": "UNSIGNED_ADVISORY — …",
   "narrative": null
@@ -139,5 +147,7 @@ schedule получает маркер максимальной severity. `not_c
 - отдельные тесты сортировки, изменения порога в паке, неполных входов,
   недоверенного источника, `pue-rk` и отсутствия LLM-ключа;
 - демо: пример щита, затем убрать УЗО у розеточной цепи и увеличить длину;
+- однофазное демо: питание 230 В/1ф, только L1, проверить ток ввода, feeder ΔU и R05
+  `not_applicable`; затем намеренно назначить L2 и увидеть HTTP 422;
 - `pytest`, Ruff и strict mypy; визуальная проверка Studio;
 - отдельный PR `feat/v3-phase-3a-normcheck`, стоп перед мержем.
