@@ -1,9 +1,11 @@
 """Deterministic R01-R10 normcheck: rules, trust gates, ordering and API (docs/14)."""
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from electricopilot.data.loader import DataPack, load_data_pack
@@ -14,6 +16,7 @@ from electricopilot.normcheck import (
     narrate_findings,
     run_normcheck,
 )
+from electricopilot.project import build_project_report
 from electricopilot.studio_api import app
 
 
@@ -160,6 +163,61 @@ def test_r05_threshold_comes_from_pack(verified_pack: DataPack) -> None:
     config["R05"]["max_imbalance_pct"] = 400
     changed = verified_pack.model_copy(update={"normcheck": config})
     assert _violations(project, changed, "R05") == []
+
+
+def test_r03_and_r05_follow_one_and_three_phase_board_topology(
+    verified_pack: DataPack,
+) -> None:
+    one_phase = _project(_circuit())
+    one_phase["supply"].update({
+        "voltage_v": 230,
+        "phases": 1,
+        "feeder": {"length_m": 500, "section_mm2": 1.5, "material": "Cu"},
+    })
+    three_phase = deepcopy(one_phase)
+    three_phase["supply"].update({"voltage_v": 400, "phases": 3})
+
+    one_report = build_project_report(one_phase, data_pack=verified_pack)
+    three_report = build_project_report(three_phase, data_pack=verified_pack)
+    one_findings = run_normcheck(one_phase, verified_pack)
+    three_findings = run_normcheck(three_phase, verified_pack)
+    one_r03 = _for(one_findings, "R03")[0]
+    three_r03 = _for(three_findings, "R03")[0]
+
+    rho = verified_pack.resistivity("Cu")
+    one_current = one_report["board"]["totals"]["phase"]["L1"]["A"]
+    expected_one = 2 * one_current * (rho * 500 / 1.5) / 230 * 100
+    three_phase_currents = three_report["board"]["totals"]["phase"]
+    three_current = max(three_phase_currents[name]["A"] for name in ("L1", "L2", "L3"))
+    expected_three = math.sqrt(3) * three_current * (rho * 500 / 1.5) / 400 * 100
+
+    assert one_r03.observed["feeder_vd_pct"] == pytest.approx(round(expected_one, 3))
+    assert three_r03.observed["feeder_vd_pct"] == pytest.approx(round(expected_three, 3))
+    assert "voltage_drop_limit" in one_r03.data_sections
+
+    one_r05 = _for(one_findings, "R05")[0]
+    assert one_r05.status == "not_checked"
+    assert one_r05.reason == "not_applicable"
+    assert _violations(one_phase, verified_pack, "R05") == []
+    assert _violations(three_phase, verified_pack, "R05")
+
+
+def test_r03_trust_includes_voltage_drop_limit(verified_pack: DataPack) -> None:
+    project = _project(_circuit())
+    project["supply"]["feeder"] = {"length_m": 500, "section_mm2": 1.5, "material": "Cu"}
+    provenance = dict(verified_pack.provenance)
+    provenance.pop("voltage_drop_limit")
+    mixed = verified_pack.model_copy(update={"provenance": provenance})
+
+    finding = _for(run_normcheck(project, mixed), "R03")[0]
+    assert finding.status == "not_checked"
+    assert finding.reason == "untrusted_source"
+    assert "voltage_drop_limit" in finding.data_sections
+
+    report = build_normcheck_report(project, mixed)
+    sections = {item["section"] for item in report.data_provenance["used_sections"]}
+    assert "voltage_drop_limit" in sections
+    assert "voltage_drop_limit" in report.data_provenance["untrusted_sections"]
 
 
 def test_r06_board_spare_positive_and_negative(verified_pack: DataPack) -> None:

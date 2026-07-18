@@ -1,10 +1,10 @@
 """Pure R01-R10 rule registry. Thresholds come only from DataPack.normcheck."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from ..topology import SupplyTopology, feeder_current_a, feeder_voltage_drop_pct
 from .models import BoardContext, Finding, FindingScope, RuleSource, Severity
 
 RuleFunction = Callable[[BoardContext, RuleSource], list[Finding]]
@@ -62,6 +62,7 @@ def _finding(
         required=required,
         citation=source.citation,
         source_section=source.section,
+        data_sections=list(source.data_sections),
         source_trusted=source.trusted,
         reason=reason,
     )
@@ -160,30 +161,28 @@ def _feeder_drop_pct(ctx: BoardContext) -> tuple[float | None, list[str]]:
     missing = [key for key in ("length_m", "section_mm2", "material") if feeder.get(key) is None]
     if missing:
         return None, missing
-    supply = ctx.project.get("supply") or {}
     try:
-        voltage_v = float(supply.get("voltage_v") or 0)
         length_m = float(feeder["length_m"])
         section_mm2 = float(feeder["section_mm2"])
     except (TypeError, ValueError):
         return None, ["supply.feeder numeric fields invalid"]
     if length_m <= 0 or section_mm2 <= 0:
         return None, ["supply.feeder length_m/section_mm2 must be > 0"]
+    supply = SupplyTopology.model_validate(ctx.report["board"]["topology"])
     phase = ctx.report["board"]["totals"]["phase"]
-    current_a = max(float(phase[name]["A"]) for name in ("L1", "L2", "L3"))
-    if voltage_v <= 0:
-        return None, ["supply.voltage_v"]
+    current_a = feeder_current_a(
+        {name: float(phase[name]["A"]) for name in ("L1", "L2", "L3")}, supply,
+    )
     material = str(feeder["material"])
     if material not in ("Cu", "Al"):
         return None, ["supply.feeder.material invalid"]
     rho = ctx.pack.resistivity(material)  # type: ignore[arg-type]
-    resistance = rho * length_m / section_mm2
-    return math.sqrt(3) * current_a * resistance / voltage_v * 100, []
+    return feeder_voltage_drop_pct(current_a, length_m, section_mm2, rho, supply), []
 
 
 @rule(
     "R03", "error", "circuit", "Суммарное падение напряжения выше лимита",
-    required_data_sections=_SIZING_SECTIONS,
+    required_data_sections=_SIZING_SECTIONS + ("voltage_drop_limit",),
 )
 def r03_cumulative_voltage_drop(ctx: BoardContext, source: RuleSource) -> list[Finding]:
     spec = _spec("R03")
@@ -277,7 +276,15 @@ def r04_incomer_nominal(ctx: BoardContext, source: RuleSource) -> list[Finding]:
 @rule("R05", "warning", "board", "Перекос фаз выше порога")
 def r05_phase_imbalance(ctx: BoardContext, source: RuleSource) -> list[Finding]:
     spec = _spec("R05")
-    observed = float(ctx.report["board"]["totals"]["imbalance_pct"])
+    totals = ctx.report["board"]["totals"]
+    if not totals["imbalance_applicable"]:
+        return [_finding(
+            spec, source,
+            detail="Проверка перекоса фаз неприменима к однофазному щиту.",
+            observed={"supply_phases": 1}, required={"supply_phases": 3},
+            status="not_checked", reason="not_applicable",
+        )]
+    observed = float(totals["imbalance_pct"])
     required = float(source.config["max_imbalance_pct"])
     if observed <= required:
         return []

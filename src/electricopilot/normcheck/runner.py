@@ -44,14 +44,19 @@ def _source(pack: DataPack, spec: RuleSpec) -> RuleSource | None:
     config, citation, assessment = resolved
     dependency_assessment = pack.assess_provenance(list(spec.required_data_sections))
     dependency_issues = tuple(
-        f"{assessment.section}: {issue}"
-        for assessment in dependency_assessment.used_sections
-        for issue in assessment.issues
+        f"{section_assessment.section}: {issue}"
+        for section_assessment in dependency_assessment.used_sections
+        for issue in section_assessment.issues
+    )
+    dependency_sections = tuple(
+        section_assessment.section
+        for section_assessment in dependency_assessment.used_sections
     )
     return RuleSource(
         section=assessment.section,
         config=config,
         citation=citation,
+        data_sections=dependency_sections,
         trusted=assessment.trusted and not dependency_issues,
         issues=tuple(assessment.issues) + dependency_issues,
     )
@@ -69,6 +74,7 @@ def _unavailable(spec: RuleSpec, reason: str, detail: str) -> Finding:
         required={"trusted_rule_source": True},
         citation=None,
         source_section=f"normcheck.{spec.rule_id}",
+        data_sections=[],
         source_trusted=False,
         reason=reason,
     )
@@ -81,7 +87,10 @@ def _downgrade_untrusted(findings: list[Finding], spec: RuleSpec, source: RuleSo
             spec,
             reason="untrusted_source",
             detail=f"Правило не даёт нормативный PASS: {source.section}: {issues}.",
-        ).model_copy(update={"citation": source.citation})]
+        ).model_copy(update={
+            "citation": source.citation,
+            "data_sections": list(source.data_sections),
+        })]
     downgraded: list[Finding] = []
     for finding in findings:
         downgraded.append(finding.model_copy(update={
@@ -89,7 +98,7 @@ def _downgrade_untrusted(findings: list[Finding], spec: RuleSpec, source: RuleSo
             "title": f"Не проверено: {spec.title}",
             "detail": f"{finding.detail} Источник правила недоверенный: {issues}.",
             "source_trusted": False,
-            "reason": "untrusted_source",
+            "reason": finding.reason if finding.status == "not_checked" else "untrusted_source",
         }))
     return downgraded
 
@@ -135,11 +144,15 @@ def summarize_findings(findings: list[Finding]) -> NormcheckSummary:
 def build_normcheck_report(project: dict[str, Any], pack: DataPack) -> NormcheckReport:
     findings = run_normcheck(project, pack)
     provenance = pack.assess_provenance(
-        sorted({finding.source_section for finding in findings})
+        sorted({
+            section
+            for finding in findings
+            for section in (finding.source_section, *finding.data_sections)
+        })
     )
     data_identity = (
         f"Норм-пакет: {pack.meta.name} v{pack.meta.version}; происхождение: {pack.meta.status}; "
-        f"проверка данных правил: {provenance.verification_status}."
+        f"проверка использованных данных: {provenance.verification_status}."
     )
     return NormcheckReport(
         findings=findings,
@@ -150,6 +163,7 @@ def build_normcheck_report(project: dict[str, Any], pack: DataPack) -> Normcheck
             "status": pack.meta.status,
             "verification_status": provenance.verification_status,
         },
+        data_provenance=provenance.model_dump(),
         data_identity=data_identity,
         provenance_note=provenance_note_for(provenance),
         disclaimer=DISCLAIMER,
