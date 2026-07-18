@@ -49,7 +49,7 @@ def _rcd_str(meta: dict[str, Any]) -> str:
 
 
 def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None = None) -> dict[str, Any]:
-    pack = data_pack or load_data_pack()
+    pack = data_pack or load_data_pack(project.get("norm_pack"))
     supply = project.get("supply", {})
     u_ll = float(supply.get("voltage_v", 400) or 400)
     ways_total = int(supply.get("ways_total", max(12, len(project.get("circuits", [])))) or 12)
@@ -59,11 +59,13 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     counts = {"PASS": 0, "FAIL": 0, "NEEDS_REVIEW": 0}
     phase_a = {"L1": 0.0, "L2": 0.0, "L3": 0.0}
     connected_kw = connected_kva = emd_kw = 0.0
+    used_provenance_sections: set[str] = set()
 
     for c in project.get("circuits", []):
         meta = c.get("meta", {}) or {}
         req = SizingRequest.model_validate(c["request"])
         res = size(req, data_pack=pack)
+        used_provenance_sections.update(a.section for a in res.data_provenance.used_sections)
         ib = res.design_current_a
         kw, kva = _kw_kva(req, ib)
         connected_kw += kw
@@ -81,6 +83,8 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         counts[res.overall_status] = counts.get(res.overall_status, 0) + 1
 
         sc = next((x for x in res.checks if x.name == "short_circuit"), None)
+        cab, sp = res.selected_cable, res.selected_protection
+        rcd_meta = meta.get("rcd") or {}
         rows.append({
             "id": c.get("id"), "ref": c.get("ref") or "",
             "description": req.load.description or "—",
@@ -88,10 +92,24 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
             "phase": phase, "IB_a": round(ib, 1),
             "device": _device_str(res), "rcd": _rcd_str(meta),
             "cable": _cable_str(res, meta), "length_m": req.installation.length_m,
-            "Iz_a": round(res.selected_cable.Iz_a, 1), "dU_pct": round(res.voltage_drop_pct, 2),
+            "Iz_a": round(cab.Iz_a, 1), "dU_pct": round(res.voltage_drop_pct, 2),
             "disc": (sc.detail if sc else "—"),
-            "status": res.overall_status, "governing": res.selected_cable.governing_constraint,
+            "status": res.overall_status, "governing": cab.governing_constraint,
             "signoff": (c.get("signoff") or {}).get("status", "UNSIGNED_ADVISORY"),
+            # structured fields for document export (docs/13); display strings above stay for UI
+            "spec": {
+                "section_mm2": cab.cross_section_mm2, "material": cab.material,
+                "insulation": cab.insulation, "method": req.installation.method,
+                "cores": meta.get("cores") or ("1P+N" if req.load.phases == 1 else "3P+N"),
+                "In_a": sp.In_a, "device_class": sp.device_class,
+                "curve": (getattr(req.protection, "trip_curve_type", "C")
+                          if sp.device_class in ("MCB", "MCCB") else None),
+                # `or 30`: an absent/None/0 ma falls back to the standard 30 mA so exports never
+                # render "УЗО NoneмА" (a bare .get('ma', 30) does NOT fire on a present-but-None key).
+                "rcd": {"present": bool(rcd_meta.get("present")),
+                        "type": rcd_meta.get("type"), "ma": rcd_meta.get("ma") or 30},
+                "phases": req.load.phases,
+            },
         })
 
     vals = [phase_a["L1"], phase_a["L2"], phase_a["L3"]]
@@ -100,7 +118,14 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     emd_kva = emd_kw / 0.9 if emd_kw else 0.0  # nominal pf 0.9 for the estimate
     incomer_md_a = emd_kva * 1000 / (math.sqrt(3) * u_ll) if u_ll else 0.0
     used = len(project.get("circuits", []))
+    data_provenance = (
+        pack.assess_provenance(sorted(used_provenance_sections))
+        if used_provenance_sections
+        else pack.publication_assessment()
+    )
     board_status = "FAIL" if counts["FAIL"] else ("NEEDS_REVIEW" if counts["NEEDS_REVIEW"] else "PASS")
+    if board_status == "PASS" and data_provenance.verification_status == "NEEDS_REVIEW":
+        board_status = "NEEDS_REVIEW"
 
     board = {
         "status": board_status, "rollup": counts,
@@ -115,16 +140,34 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         "ways": {"used": used, "total": ways_total, "spare": max(0, ways_total - used),
                  "spare_pct": round(max(0, ways_total - used) / ways_total * 100, 0) if ways_total else 0},
     }
-    provenance_note = provenance_note_for(pack.meta)
+    provenance_note = provenance_note_for(data_provenance)
+    data_identity = (
+        f"Норм-пакет: {pack.meta.name} v{pack.meta.version}; происхождение: {pack.meta.status}; "
+        f"проверка данных: {data_provenance.verification_status}."
+    )
+    signoff_notice = (
+        "UNSIGNED_ADVISORY — требуется проверка и подпись квалифицированного инженера."
+    )
     return {
         "board": board, "rows": rows,
-        "markdown": _render_markdown(project, board, rows, pack, provenance_note),
+        "markdown": _render_markdown(
+            project, board, rows, provenance_note, data_identity, signoff_notice
+        ),
+        "data_provenance": data_provenance.model_dump(),
         "provenance_note": provenance_note, "disclaimer": DISCLAIMER,
+        "data_identity": data_identity,
+        "signoff_notice": signoff_notice,
+        "norm_pack": {
+            "name": pack.meta.name,
+            "version": pack.meta.version,
+            "status": pack.meta.status,
+            "verification_status": data_provenance.verification_status,
+        },
     }
 
 
 def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[dict[str, Any]],
-                     pack: DataPack, provenance_note: str) -> str:
+                     provenance_note: str, data_identity: str, signoff_notice: str) -> str:
     supply = project.get("supply", {})
     t = board["totals"]
     L: list[str] = []
@@ -133,8 +176,8 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
     L.append("")
     L.append(f"> {DISCLAIMER}")
     L.append("")
-    L.append(f"**Статус щита:** {board['status']}  ·  цепей: {board['rollup']}  ·  "
-             f"норм-пакет: `{pack.meta.name}` ({pack.meta.status})")
+    L.append(f"**Статус щита:** {board['status']}  ·  цепей: {board['rollup']}")
+    L.append(f"- {data_identity}")
     L.append(f"- Расположение: {project.get('location', '—')}")
     L.append(f"- Питание: {supply.get('voltage_v', 400):g} В, {supply.get('phases', 3)}ф, "
              f"заземление {supply.get('earthing', 'TN-C-S')}, мест {board['ways']['used']}/{board['ways']['total']}")
@@ -163,6 +206,5 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
         L.append(f"> {provenance_note}")
         L.append("")
     L.append("## Подпись инженера")
-    L.append("- Щит: **НЕ ПОДПИСАН** (UNSIGNED_ADVISORY) — требуется проверка и подпись по каждой цепи "
-             "и по щиту квалифицированным инженером. Синтетические значения подлежат замене лицензионными.")
+    L.append(f"- Щит: **НЕ ПОДПИСАН** — {signoff_notice}")
     return "\n".join(L)

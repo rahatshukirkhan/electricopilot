@@ -13,7 +13,7 @@ def test_build_visuals_shape():
     v = build_visuals(make_request(**CASE2))
     assert set(v) >= {"result", "sweep", "vd_profile", "derating", "tcc", "sld",
                       "data_provenance_note", "disclaimer"}
-    assert v["result"]["overall_status"] == "PASS"
+    assert v["result"]["overall_status"] == "NEEDS_REVIEW"
     assert v["data_provenance_note"]  # illustrative pack → note present
 
 
@@ -54,11 +54,10 @@ def test_build_visuals_pue_rk_b1_partial_coverage():
         make_request(method="B1", material="Cu", P=3500, U=230, ph=1, pf=1.0, ins="PVC",
                      amb=25, grp=1, L=30, dev="MCB", iscc=800),
         data_pack=pack)
-    assert v["result"]["overall_status"] == "PASS"
+    assert v["result"]["overall_status"] == "NEEDS_REVIEW"
     sections = [r["section_mm2"] for r in v["sweep"]["rows"]]
     assert sections and max(sections) == 120  # only the B1-covered sections are swept
     assert v["tcc"]["device"]["available"] is False  # no trip curves in pue-rk
     assert len(v["tcc"]["cable"]["withstand"]) > 10  # real cable adiabatic curve still drawn
-    # public_standard → the public-source note, NOT the "synthetic values" illustrative one
-    assert "публичного государственного стандарта" in v["data_provenance_note"]
-    assert "СИНТЕТИЧЕСКИЕ" not in v["data_provenance_note"]
+    assert "NEEDS_REVIEW" in v["data_provenance_note"]
+    assert "проверена инженером" not in v["data_provenance_note"]

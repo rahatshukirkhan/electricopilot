@@ -135,7 +135,28 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
             detail=f"S={s_final:g} мм² ≥ S_min={s_min_sc:.2f} мм²",
             citations=[pack.citation("sc_adiabatic")]))
 
-    overall: OverallStatus = "PASS" if (passed and all(c.passed for c in checks)) else "FAIL"
+    math_passed = passed and all(c.passed for c in checks)
+    used_sections = [
+        "standard_ratings",
+        "standard_sections",
+        "device_parameters",
+        "overload_rule",
+        "ampacity",
+        "ambient_correction",
+        "grouping_correction",
+        "adiabatic_k",
+        "resistivity",
+        "reactance",
+    ]
+    if prot.max_voltage_drop_pct is None:
+        used_sections.append("voltage_drop_limit")
+    data_provenance = pack.assess_provenance(used_sections)
+    overall: OverallStatus = "PASS" if math_passed else "FAIL"
+    if overall == "PASS" and data_provenance.verification_status == "NEEDS_REVIEW":
+        overall = "NEEDS_REVIEW"
+        warnings.append(
+            "Данные норм-пакета требуют проверки; арифметический PASS понижен до NEEDS_REVIEW."
+        )
 
     # -- governing constraint --
     idx: dict[Governing, int] = {}
@@ -145,7 +166,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         idx["voltage_drop"] = sections.index(s_vd)
     if s_sc is not None:
         idx["short_circuit"] = sections.index(s_sc)
-    if overall == "PASS" and idx:
+    if math_passed and idx:
         maxidx = max(idx.values())
         governing: Governing = next(n for n in _PRIORITY if idx.get(n) == maxidx)
     else:
@@ -165,7 +186,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         result={"section_mm2": s_final, "In_a": in_a, "Iz_a": round(iz_final, 3),
                 "governing": governing, "overall": overall},
         citations=[coord_cite],
-        status="pass" if overall == "PASS" else "fail",
+        status=("pass" if overall == "PASS" else "warning" if overall == "NEEDS_REVIEW" else "fail"),
     )
 
     trace: list[ReasoningStep] = [
@@ -175,7 +196,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         step_sc, summary_step,
     ]
 
-    note = provenance_note_for(pack.meta)
+    note = provenance_note_for(data_provenance)
     return SizingResult(
         request=request,
         selected_cable=SelectedCable(
@@ -196,6 +217,7 @@ def size(request: SizingRequest, *, data_pack: DataPack | None = None) -> Sizing
         overall_status=overall,
         warnings=warnings,
         data_pack=pack.meta,
+        data_provenance=data_provenance,
         data_provenance_note=note,
         disclaimer=DISCLAIMER,
     )

@@ -27,7 +27,7 @@ def test_deterministic_verify_true_for_valid():
 def test_pipeline_offline_fallback():
     req = make_request(**CASE1)
     out = run(req, client=None, explain=True, verify=True)
-    assert out.result.overall_status == "PASS"
+    assert out.result.overall_status == "NEEDS_REVIEW"
     assert out.narrative is not None and out.narrative.model == ""   # template used
     assert out.verdict is not None and out.verdict.deterministic_ok
     assert out.verdict.model == ""                                    # no live model

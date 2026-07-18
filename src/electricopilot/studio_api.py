@@ -7,11 +7,14 @@ Requires the `api` extra (fastapi + uvicorn). Run locally:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -19,6 +22,8 @@ from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
 from .exceptions import DataPackError, LlmConfigError, LlmError
+from .export import build_bundle, build_sld
+from .export.svg import render_svg
 from .guardrails import check_numeric_provenance
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
@@ -69,8 +74,20 @@ def health() -> dict[str, str]:
 
 @app.get("/api/packs")
 def packs_endpoint() -> list[dict[str, Any]]:
-    return [{"name": m.name, "version": m.version, "status": m.status,
-             "source_note": m.source_note} for m in list_packs()]
+    result: list[dict[str, Any]] = []
+    for meta in list_packs():
+        pack = load_data_pack(meta.name)
+        assessment = pack.publication_assessment()
+        result.append({
+            "name": meta.name,
+            "version": meta.version,
+            "status": meta.status,
+            "source_note": meta.source_note,
+            "verification_status": assessment.verification_status,
+            "publication_ready": assessment.verification_status == "VERIFIED",
+            "untrusted_sections": assessment.untrusted_sections,
+        })
+    return result
 
 
 def _pack_or_400(pack: Optional[str]) -> DataPack:
@@ -151,12 +168,54 @@ class ProjectBody(BaseModel):
     project: dict[str, Any]
 
 
+def _report_for(project: dict[str, Any]) -> dict[str, Any]:
+    pack = _pack_or_400(project.get("norm_pack"))
+    return _catch_pack_error(build_project_report, project, data_pack=pack)  # type: ignore[no-any-return]
+
+
+def _sld_preview(project: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+    """First-sheet SVG + sheet count. Only sheet 0 is rendered — the preview/print show one
+    sheet; the full multi-sheet set lives in the export bundle (docs/13)."""
+    sheets = build_sld(project, report)
+    return {"svg": render_svg(sheets[0]) if sheets else "", "sheets": len(sheets)}
+
+
 @app.post("/api/project-report")
-def project_report_endpoint(body: ProjectBody) -> dict[str, Any]:
+def project_report_endpoint(body: ProjectBody, sld: bool = False) -> dict[str, Any]:
     """Recompute every circuit of a board with the real engine → panel schedule + totals + report.
-    Norm pack is read from project.norm_pack (falls back to the default pack)."""
+    Norm pack is read from project.norm_pack (falls back to the default pack). With ?sld=1 the
+    single-line preview is computed from the SAME report, so the board view/print need one call
+    (one engine pass) instead of two."""
+    report = _report_for(body.project)
+    if sld:
+        report = {**report, "sld": _sld_preview(body.project, report)}
+    return report
+
+
+def _safe_filename(project: dict[str, Any]) -> str:
+    base = str(project.get("board_ref") or project.get("name") or "board")
+    return re.sub(r"[^\w.-]+", "_", base).strip("_") or "board"
+
+
+@app.post("/api/project-sld")
+def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
+    """Single-line diagram preview: first-sheet SVG + sheet count (docs/13)."""
+    return _sld_preview(body.project, _report_for(body.project))
+
+
+@app.post("/api/project-export")
+def project_export_endpoint(body: ProjectBody) -> Response:
+    """Full document package as a downloadable zip (docs/13)."""
     pack = _pack_or_400(body.project.get("norm_pack"))
-    return _catch_pack_error(build_project_report, body.project, data_pack=pack)  # type: ignore[no-any-return]
+    data: bytes = _catch_pack_error(build_bundle, body.project, data_pack=pack)
+    # HTTP headers are latin-1; RFC 5987 filename* must be percent-encoded UTF-8 (the board
+    # ref can be Cyrillic), with an ASCII filename= fallback for old clients.
+    fname = quote(f"{_safe_filename(body.project)}_пакет.zip")
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition":
+                 f"attachment; filename=\"bundle.zip\"; filename*=UTF-8''{fname}"},
+    )
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---

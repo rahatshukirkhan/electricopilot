@@ -19,6 +19,8 @@ CircuitPurpose = Literal["lighting", "power", "socket", "motor", "general"]
 StepStatus = Literal["info", "pass", "fail", "warning"]
 OverallStatus = Literal["PASS", "FAIL", "NEEDS_REVIEW"]
 DataStatus = Literal["illustrative", "public_standard", "licensed"]
+DataOrigin = Literal["illustrative", "public_standard", "licensed", "unattributed"]
+DataVerificationStatus = Literal["VERIFIED", "NEEDS_REVIEW"]
 SignStatus = Literal["UNSIGNED_ADVISORY", "SIGNED"]
 Governing = Literal["overload_coordination", "voltage_drop", "short_circuit"]
 StepId = Literal["current", "protection", "ampacity", "voltage_drop", "short_circuit", "summary"]
@@ -137,6 +139,34 @@ class DataPackMeta(BaseModel):
     source_document: Optional[str] = None
 
 
+class DataSourceRecord(BaseModel):
+    """Provenance declared by a pack for one numeric data family (docs/04 §4.6)."""
+
+    origin: DataOrigin
+    source_document: Optional[str] = None
+    source_url: Optional[str] = None
+    entered_by: Optional[str] = None
+    verified_by: Optional[str] = None
+    verified_at: Optional[str] = None
+    note: Optional[str] = None
+
+
+class DataSectionAssessment(BaseModel):
+    section: str
+    source: DataSourceRecord
+    trusted: bool
+    issues: list[str] = Field(default_factory=list)
+
+
+class DataProvenanceSummary(BaseModel):
+    pack_name: str
+    pack_version: str
+    pack_origin: DataStatus
+    verification_status: DataVerificationStatus
+    used_sections: list[DataSectionAssessment]
+    untrusted_sections: list[str]
+
+
 class SizingResult(BaseModel):
     request: SizingRequest
     selected_cable: SelectedCable
@@ -150,6 +180,7 @@ class SizingResult(BaseModel):
     overall_status: OverallStatus
     warnings: list[str] = Field(default_factory=list)
     data_pack: DataPackMeta
+    data_provenance: DataProvenanceSummary
     data_provenance_note: str
     signoff: SignOff = Field(default_factory=SignOff)
     disclaimer: str
@@ -177,31 +208,27 @@ DISCLAIMER = (
     "⚠️  Рекомендательный расчёт ElectriCopilot. НЕ является сертификацией и не заменяет "
     "проектную документацию. Требуется проверка и подпись квалифицированного инженера."
 )
-PROVENANCE_NOTE_ILLUSTRATIVE = (
-    "Числовые значения таблиц норм-пакета — СИНТЕТИЧЕСКИЕ (не выведены из IEC) и подлежат "
-    "замене лицензионными данными. Механизм цитирования реален (ссылки на пункты/таблицы "
-    "IEC 60364), но пометки PASS/FAIL отражают арифметику относительно синтетических значений, "
-    "а не соответствие реальному стандарту."
-)
-
-
-def provenance_note_public(source_document: Optional[str]) -> str:
-    """Provenance note for a `public_standard` pack (docs/12 §1.1). Values are transcribed
-    from a real public government standard (not IEC-copyrighted); the source document is
-    not reproduced in full, only cited per table/clause."""
-    doc = source_document or "указанного в data_pack.meta источника"
-    return (
-        f"Числовые значения внесены из публичного государственного стандарта ({doc}); "
-        "документ не воспроизводится целиком, только цитируется по пунктам/таблицам. "
-        "Транскрипция проверена инженером (см. _citation.verified_by таблиц пакета)."
+def provenance_note_for(summary: DataProvenanceSummary) -> str:
+    """Human-readable projection of deterministic per-section trust (docs/04 §4.6)."""
+    identity = (
+        f"Норм-пакет {summary.pack_name} v{summary.pack_version}; "
+        f"происхождение: {summary.pack_origin}."
     )
-
-
-def provenance_note_for(meta: "DataPackMeta") -> str:
-    """Single source of truth for SizingResult.data_provenance_note / project report notes,
-    keyed off data_pack.meta.status (docs/12 §1.1)."""
-    if meta.status == "illustrative":
-        return PROVENANCE_NOTE_ILLUSTRATIVE
-    if meta.status == "public_standard":
-        return provenance_note_public(meta.source_document)
-    return ""
+    if summary.verification_status == "VERIFIED":
+        return f"{identity} Все использованные числовые секции атрибутированы и верифицированы."
+    sections = ", ".join(summary.untrusted_sections) or "не определены"
+    origins = {assessment.source.origin for assessment in summary.used_sections}
+    origin_warnings: list[str] = []
+    if "illustrative" in origins:
+        origin_warnings.append("Среди использованных секций есть СИНТЕТИЧЕСКИЕ данные.")
+    if "unattributed" in origins:
+        origin_warnings.append("Среди использованных секций есть неатрибутированные данные.")
+    origin_warning = " ".join(origin_warnings)
+    if origin_warning:
+        origin_warning += " "
+    return (
+        f"{identity} Данные требуют проверки (NEEDS_REVIEW). Недоверенные секции: {sections}. "
+        f"{origin_warning}PASS/FAIL отражает только детерминированную арифметику и не "
+        "является заявлением о "
+        "полном соответствии стандарту."
+    )
