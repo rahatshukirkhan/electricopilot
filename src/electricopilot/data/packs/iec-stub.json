@@ -5,6 +5,68 @@
     "status": "illustrative",
     "source_note": "SYNTHETIC values, NOT derived from IEC tables; structure mirrors IEC 60364 for pluggable licensed data"
   },
+  "provenance": {
+    "normcheck.R01": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE rule; not an IEC value"
+    },
+    "normcheck.R02": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE threshold; not an IEC value"
+    },
+    "normcheck.R03": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE thresholds; not IEC values"
+    },
+    "normcheck.R04": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE rule; not an IEC value"
+    },
+    "normcheck.R05": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE threshold; not an IEC value"
+    },
+    "normcheck.R06": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE threshold; not an IEC value"
+    },
+    "normcheck.R07": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE rule; not an IEC value"
+    },
+    "normcheck.R08": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE threshold; not an IEC value"
+    },
+    "normcheck.R09": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE rule; not an IEC value"
+    },
+    "normcheck.R10": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture-generator",
+      "note": "ILLUSTRATIVE table; not IEC values"
+    }
+  },
   "standard_ratings_a": [
     6,
     10,
@@ -285,6 +347,98 @@
     "install_method": {
       "standard": "IEC 60364-5-52",
       "table": "B.52.1"
+    }
+  },
+  "normcheck": {
+    "R01": {
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "ILLUSTRATIVE aggregation of deterministic sizing failures"
+      }
+    },
+    "R02": {
+      "max_rcd_ma": 30,
+      "citation": {
+        "standard": "IEC 60364-4-41",
+        "note": "SYNTHETIC threshold for product testing; not extracted from IEC"
+      }
+    },
+    "R03": {
+      "max_total_vd_pct_by_purpose": {
+        "lighting": 3,
+        "power": 5,
+        "socket": 5,
+        "motor": 5,
+        "general": 5
+      },
+      "citation": {
+        "standard": "IEC 60364-5-52",
+        "clause": "Annex G (informative)",
+        "note": "SYNTHETIC thresholds for product testing; not extracted from IEC"
+      }
+    },
+    "R04": {
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "ILLUSTRATIVE nominal selectivity screen only"
+      }
+    },
+    "R05": {
+      "max_imbalance_pct": 20,
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "SYNTHETIC phase-imbalance threshold"
+      }
+    },
+    "R06": {
+      "min_spare_pct": 20,
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "SYNTHETIC board-spare threshold"
+      }
+    },
+    "R07": {
+      "motor_disallowed_curves": [
+        "B"
+      ],
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "ILLUSTRATIVE motor starting-current screen"
+      }
+    },
+    "R08": {
+      "min_al_section_mm2": 16,
+      "citation": {
+        "standard": "IEC-STUB",
+        "note": "SYNTHETIC aluminium minimum section"
+      }
+    },
+    "R09": {
+      "citation": {
+        "standard": "IEC 60364-4-43",
+        "clause": "434.5.2",
+        "note": "ILLUSTRATIVE completeness rule; no normative number"
+      }
+    },
+    "R10": {
+      "pe_section_table": [
+        {
+          "phase_max_mm2": 16,
+          "same_as_phase": true
+        },
+        {
+          "phase_max_mm2": 35,
+          "fixed_mm2": 16
+        },
+        {
+          "phase_max_mm2": null,
+          "factor": 0.5
+        }
+      ],
+      "citation": {
+        "standard": "IEC 60364-5-54",
+        "note": "SYNTHETIC PE table for product testing; not extracted from IEC"
+      }
     }
   },
   "trip_curves": {

@@ -42,6 +42,16 @@ NUMERIC_PROVENANCE_SECTIONS = (
     "voltage_drop_limit",
     "resistivity",
     "reactance",
+    "normcheck.R01",
+    "normcheck.R02",
+    "normcheck.R03",
+    "normcheck.R04",
+    "normcheck.R05",
+    "normcheck.R06",
+    "normcheck.R07",
+    "normcheck.R08",
+    "normcheck.R09",
+    "normcheck.R10",
 )
 
 
@@ -70,6 +80,7 @@ class DataPack(BaseModel):
     ampacity: dict[str, Any]
     citations: dict[str, Any]
     trip_curves: dict[str, Any] = {}   # illustrative time-current curves (Studio TCC, docs/10)
+    normcheck: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate(self) -> "DataPack":
@@ -81,6 +92,78 @@ class DataPack(BaseModel):
                     "sc_adiabatic", "install_method"):
             if key not in self.citations:
                 raise DataPackError(f"citations registry missing key '{key}'")
+        for rule_id, config in self.normcheck.items():
+            if rule_id not in {f"R{i:02}" for i in range(1, 11)}:
+                raise DataPackError(f"unknown normcheck rule '{rule_id}'")
+            if "citation" not in config:
+                raise DataPackError(f"normcheck.{rule_id} missing citation")
+            def numeric(key: str, *, minimum: float = 0, maximum: float | None = None) -> float:
+                value = config.get(key)
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise DataPackError(f"normcheck.{rule_id}.{key} must be numeric")
+                result = float(value)
+                if result < minimum or (maximum is not None and result > maximum):
+                    raise DataPackError(f"normcheck.{rule_id}.{key} out of range")
+                return result
+
+            if rule_id == "R02":
+                numeric("max_rcd_ma", minimum=0.001)
+            elif rule_id == "R03":
+                limits = config.get("max_total_vd_pct_by_purpose")
+                if not isinstance(limits, dict) or not limits:
+                    raise DataPackError(
+                        "normcheck.R03.max_total_vd_pct_by_purpose must be a non-empty object"
+                    )
+                for purpose, value in limits.items():
+                    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                        raise DataPackError(f"normcheck.R03 limit for '{purpose}' must be > 0")
+            elif rule_id == "R05":
+                numeric("max_imbalance_pct", maximum=1000)
+            elif rule_id == "R06":
+                numeric("min_spare_pct", maximum=100)
+            elif rule_id == "R07":
+                curves = config.get("motor_disallowed_curves")
+                if not isinstance(curves, list) or not curves or not all(
+                    isinstance(curve, str) for curve in curves
+                ):
+                    raise DataPackError(
+                        "normcheck.R07.motor_disallowed_curves must be a non-empty string list"
+                    )
+            elif rule_id == "R08":
+                numeric("min_al_section_mm2", minimum=0.001)
+            elif rule_id == "R10":
+                table = config.get("pe_section_table")
+                if not isinstance(table, list) or not table:
+                    raise DataPackError("normcheck.R10.pe_section_table must be non-empty")
+                for row in table:
+                    if not isinstance(row, dict):
+                        raise DataPackError("normcheck.R10.pe_section_table rows must be objects")
+                    same_as_phase = row.get("same_as_phase")
+                    if same_as_phase not in (None, True):
+                        raise DataPackError(
+                            "normcheck.R10.same_as_phase must be true when present"
+                        )
+                    modes = sum((
+                        same_as_phase is True,
+                        row.get("fixed_mm2") is not None,
+                        row.get("factor") is not None,
+                    ))
+                    if modes != 1:
+                        raise DataPackError(
+                            "normcheck.R10 PE row must define exactly one sizing mode"
+                        )
+                    if row.get("phase_max_mm2") is not None:
+                        value = row["phase_max_mm2"]
+                        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                            raise DataPackError(
+                                "normcheck.R10.phase_max_mm2 must be > 0"
+                            )
+                    for key in ("fixed_mm2", "factor"):
+                        if row.get(key) is not None:
+                            value = row[key]
+                            if (isinstance(value, bool)
+                                    or not isinstance(value, (int, float)) or value <= 0):
+                                raise DataPackError(f"normcheck.R10.{key} must be > 0")
         return self
 
     # -- accessors --
@@ -185,6 +268,21 @@ class DataPack(BaseModel):
         if entry is None:
             raise DataPackError(f"no trip curve for device class '{device}'")
         return entry, _cite(entry.get("citation", {"standard": "n/a"}))
+
+    def normcheck_rule(
+        self, rule_id: str,
+    ) -> tuple[dict[str, Any], Citation, DataSectionAssessment] | None:
+        """Return one rule config with its citation and PER-5 trust assessment.
+
+        Missing config is distinct from an untrusted configured rule: the runner
+        exposes both as explicit ``not_checked`` reasons (docs/14).
+        """
+        entry = self.normcheck.get(rule_id)
+        if entry is None:
+            return None
+        section = f"normcheck.{rule_id}"
+        assessment = self.assess_provenance([section]).used_sections[0]
+        return entry, _cite(entry["citation"]), assessment
 
     def _source_record(self, section: str) -> DataSourceRecord:
         """Return an explicit section record, or a conservative meta-derived fallback."""

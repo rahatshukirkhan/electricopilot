@@ -45,7 +45,9 @@ def _rcd_str(meta: dict[str, Any]) -> str:
     rcd = meta.get("rcd") or {}
     if not rcd.get("present"):
         return "—"
-    return f"{rcd.get('type', 'RCD')} {rcd.get('ma', 30):g}мА"
+    setting = rcd.get("ma", 30)
+    rendered = f"{setting:g}" if isinstance(setting, (int, float)) and not isinstance(setting, bool) else str(setting)
+    return f"{rcd.get('type', 'RCD')} {rendered}мА"
 
 
 def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None = None) -> dict[str, Any]:
@@ -132,7 +134,9 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
         "totals": {
             "connected_kw": round(connected_kw, 2), "connected_kva": round(connected_kva, 2),
             "phase": {p: {"A": round(phase_a[p], 1)} for p in phase_a},
-            "imbalance_pct": round(imbalance, 1), "imbalance_flag": imbalance > 20,
+            # The project report exposes only the measured value. Threshold evaluation
+            # belongs to deterministic normcheck rule R05 and its selected data pack.
+            "imbalance_pct": round(imbalance, 1), "imbalance_flag": None,
         },
         "demand": {"emd_kw": round(emd_kw, 2), "emd_kva": round(emd_kva, 2),
                    "incomer_md_a": round(incomer_md_a, 1), "provenance": "illustrative",
@@ -194,8 +198,8 @@ def _render_markdown(project: dict[str, Any], board: dict[str, Any], rows: list[
     L.append(f"- Подключённая нагрузка: **{t['connected_kw']:g} кВт / {t['connected_kva']:g} кВА**")
     ph = t["phase"]
     L.append(f"- Баланс фаз (реальный): L1={ph['L1']['A']:g} A · L2={ph['L2']['A']:g} A · "
-             f"L3={ph['L3']['A']:g} A · перекос {t['imbalance_pct']:g}%"
-             + ("  ⚠ превышен" if t["imbalance_flag"] else ""))
+             f"L3={ph['L3']['A']:g} A · перекос {t['imbalance_pct']:g}% "
+             "(оценка порога — нормоконтроль R05)")
     d = board["demand"]
     L.append(f"- Расчётная нагрузка (ИЛЛЮСТРАТИВНО): **{d['emd_kw']:g} кВт / {d['emd_kva']:g} кВА**, "
              f"ток ввода ≈ {d['incomer_md_a']:g} A (df синтетические)")

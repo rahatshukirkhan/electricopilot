@@ -229,6 +229,36 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
   box-shadow:0 0 14px -4px rgba(79,157,255,.6)}
 .phbar .b span{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:500 11px/1.25 var(--mono);color:var(--dim)}
 
+/* normcheck ----------------------------------------------------------- */
+.norm-panel{margin-top:16px}
+.norm-summary{margin-left:auto;font:500 12px var(--mono);text-transform:none;letter-spacing:0}
+.norm-findings{display:grid;gap:8px;padding:12px}
+.norm-card{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;
+  padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel2)}
+.norm-card.error{border-left:3px solid var(--bad)}
+.norm-card.warning{border-left:3px solid var(--warn)}
+.norm-card.info{border-left:3px solid var(--acc)}
+.norm-card.not-checked{opacity:.82;border-left-color:var(--faint)}
+.norm-sev{font:700 10px var(--mono);text-transform:uppercase;padding:3px 7px;border-radius:12px;border:1px solid currentColor}
+.norm-card.error .norm-sev{color:var(--bad)}
+.norm-card.warning .norm-sev{color:var(--warn)}
+.norm-card.info .norm-sev{color:var(--acc)}
+.norm-card.not-checked .norm-sev{color:var(--faint)}
+.norm-main h4{margin:0 0 4px;font-size:13px}.norm-main p{margin:0;color:var(--dim);font-size:12px;line-height:1.5}
+.norm-values{margin-top:5px;font:500 11px/1.45 var(--mono);color:var(--faint);overflow-wrap:anywhere}
+.norm-cite{margin-top:4px;color:var(--faint);font-size:10.5px}
+.norm-open{white-space:nowrap;padding:5px 9px;font-size:11px}
+.norm-identity{padding:0 12px 12px;color:var(--faint);font-size:10.5px;line-height:1.55}
+.norm-marker{display:inline-flex;margin-left:5px;padding:1px 5px;border-radius:10px;font:700 9px var(--mono);vertical-align:middle}
+.norm-marker.error{color:var(--bad);background:var(--bad-soft)}
+.norm-marker.warning{color:var(--warn);background:var(--warn-soft)}
+.norm-marker.info{color:var(--acc);background:var(--acc-soft)}
+.norm-marker.review{color:var(--faint);background:var(--panel2)}
+table.schedule tr.norm-error td:first-child{box-shadow:inset 3px 0 var(--bad)}
+table.schedule tr.norm-warning td:first-child{box-shadow:inset 3px 0 var(--warn)}
+table.schedule tr.norm-info td:first-child{box-shadow:inset 3px 0 var(--acc)}
+table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)}
+
 /* ===================== EDITOR ===================== */
 .editor-bar{display:flex;align-items:center;gap:12px;padding:9px 18px;
   background:linear-gradient(180deg,rgba(23,34,52,.5),rgba(15,22,38,.8));border-bottom:1px solid var(--line);
