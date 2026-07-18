@@ -50,9 +50,11 @@
 
 `POST /api/project-report` — принимает проект, **пересчитывает каждую цепь реальным `size()`**
 (не доверяет клиентским снимкам) на паке из `project.norm_pack` (или дефолтном), возвращает
-`{board{status,rollup,totals,demand,ways}, rows[], markdown, provenance_note, disclaimer}`.
-`provenance_note` и Markdown-отчёт теперь пак-зависимы (`models.provenance_note_for`, docs/12
-§1.1) — пусты для `licensed`, а не всегда `PROVENANCE_NOTE_ILLUSTRATIVE`.
+`{board{status,rollup,totals,demand,ways}, rows[], markdown, data_provenance,
+provenance_note, data_identity, signoff_notice, disclaimer, norm_pack}`.
+`data_provenance`, `provenance_note` и Markdown-отчёт зависят от реально использованных
+секций пакета (`DataPack.assess_provenance`, docs/04 §4.6), а не только от `meta.status` (docs/12
+§1.1): `VERIFIED` разрешён только при полной атрибуции и записи реального проверяющего.
 
 ## 11.5 Экспорт / доверие
 

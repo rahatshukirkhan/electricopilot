@@ -31,7 +31,8 @@
 
 ```
 GET  /api/health                        → {status, mode}
-GET  /api/packs                         → [{name, version, status, source_note}]
+GET  /api/packs                         → [{name, version, status, verification_status,
+                                           publication_ready, untrusted_sections, source_note}]
 POST /api/size      SizingRequest        → SizingResult                  ?pack=<name>
 POST /api/viz       SizingRequest        → {sweep, vd_profile, derating, tcc, sld} (детерм.)  ?pack=<name>
 POST /api/intake    {text}               → SizingRequest            (Gemini Flash)
