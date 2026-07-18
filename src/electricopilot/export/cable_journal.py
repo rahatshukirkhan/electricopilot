@@ -44,6 +44,8 @@ def build_cable_journal(project: dict[str, Any], report: dict[str, Any]) -> Tabl
     notes = [
         f"Запас длины: коэффициент {margin:g} (project.export_settings.cable_margin).",
         "«Марка» — заглушка: конкретная марка кабеля назначается по проекту/каталогу.",
+        report.get("data_identity", ""),
+        report.get("signoff_notice", ""),
         report.get("provenance_note", ""),
         report.get("disclaimer", ""),
     ]

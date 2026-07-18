@@ -18,6 +18,8 @@ CircuitPurpose = Literal["lighting", "power", "socket", "motor", "general"]
 StepStatus = Literal["info", "pass", "fail", "warning"]
 OverallStatus = Literal["PASS", "FAIL", "NEEDS_REVIEW"]
 DataStatus = Literal["illustrative", "public_standard", "licensed"]
+DataOrigin = Literal["illustrative", "public_standard", "licensed", "unattributed"]
+DataVerificationStatus = Literal["VERIFIED", "NEEDS_REVIEW"]
 SignStatus = Literal["UNSIGNED_ADVISORY", "SIGNED"]
 
 # governing_constraint: какой критерий связал выбор сечения. 'overload_coordination'
@@ -44,8 +46,8 @@ AuditTrace = list["ReasoningStep"]
 
 ```python
 class Citation(BaseModel):
-    """Ссылка на источник нормы. Механизм цитирования РЕАЛЕН; числовые значения,
-    к которым он привязан, ИЛЛЮСТРАТИВНЫ (см. DataPackMeta.status / 04)."""
+    """Ссылка на источник нормы. Доверие к числовым значениям определяется отдельно
+    через DataSourceRecord, а не наличием Citation или DataPackMeta.status."""
     standard: str              # напр. "IEC 60364-4-43"
     clause: Optional[str] = None   # напр. "433.1"
     table: Optional[str] = None    # напр. "B.52.2"
@@ -163,6 +165,31 @@ class DataPackMeta(BaseModel):
     source_note: str
     source_document: Optional[str] = None   # напр. "ПУЭ РК, приказ №230 от 20.03.2015" (public_standard)
 
+class DataSourceRecord(BaseModel):
+    # Provenance одной числовой секции пакета. meta.status задаёт происхождение пакета,
+    # но НЕ доказывает, что конкретная секция атрибутирована и проверена.
+    origin: DataOrigin
+    source_document: Optional[str] = None
+    source_url: Optional[str] = None
+    entered_by: Optional[str] = None
+    verified_by: Optional[str] = None
+    verified_at: Optional[str] = None       # ISO-8601; только от реального проверяющего
+    note: Optional[str] = None
+
+class DataSectionAssessment(BaseModel):
+    section: str
+    source: DataSourceRecord
+    trusted: bool
+    issues: list[str] = []
+
+class DataProvenanceSummary(BaseModel):
+    pack_name: str
+    pack_version: str
+    pack_origin: DataStatus
+    verification_status: DataVerificationStatus
+    used_sections: list[DataSectionAssessment]
+    untrusted_sections: list[str]
+
 class SizingResult(BaseModel):
     request: SizingRequest
     selected_cable: SelectedCable
@@ -176,8 +203,9 @@ class SizingResult(BaseModel):
     overall_status: OverallStatus
     warnings: list[str] = []
     data_pack: DataPackMeta
-    # СТРУКТУРНАЯ провенанс-пометка (B12): непуста, когда data_pack.status="illustrative";
-    # report.render_markdown ОБЯЗАН её печатать. Заполняется по data_pack.status.
+    # Структурная оценка ТОЛЬКО реально использованных числовых секций.
+    data_provenance: DataProvenanceSummary
+    # Человекочитаемая проекция data_provenance; report/export ОБЯЗАНЫ её печатать.
     data_provenance_note: str
     signoff: SignOff = SignOff()          # всегда присутствует, дефолт UNSIGNED_ADVISORY
     disclaimer: str
@@ -249,6 +277,8 @@ class DataPack(BaseModel):
     def reactance(self) -> float: ...
     def vd_limit(self, purpose: CircuitPurpose) -> float: ...
     def citation(self, key: CitationKey) -> Citation: ...
+    def assess_provenance(self, sections: list[str]) -> DataProvenanceSummary: ...
+    def publication_assessment(self) -> DataProvenanceSummary: ...
 
 # reference_ambient_c: хранится как метаданные (air 30 / ground 20). В v1 поправка ka —
 # только для воздушной опоры (все кейсы — метод C/воздух); аксессора нет намеренно. Земляная
@@ -338,14 +368,28 @@ GET  /health                                → 200 {"status":"ok","mode":"live|
 
 ## 3.10 Схема норм-пакета (JSON) — вход `load_data_pack` → `DataPack`
 
-Все числовые ключи таблиц — **строки** по правилу `pack_key` (B5). Значения — **синтетические**
-(см. `04`). Каждая табличная секция несёт `_citation`; отдельный реестр `citations` даёт ссылки
+Все числовые ключи таблиц — **строки** по правилу `pack_key` (B5). Происхождение и проверка
+каждой числовой семьи задаются отдельно в `provenance`; `meta.status` описывает только тип
+пакета и не является доказательством верификации. Отдельный реестр `citations` даёт ссылки
 для шагов, у которых нет собственной таблицы (IB, выбор In, ВП, адиабатика — `01 §1.10`).
 
 ```jsonc
 {
   "meta": { "name": "iec-stub", "version": "0.1.0", "status": "illustrative",
             "source_note": "SYNTHETIC values, NOT derived from IEC tables; structure mirrors IEC 60364 for pluggable licensed data" },
+  "provenance": {
+    "standard_ratings": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "standard_sections": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "device_parameters": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "overload_rule": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "ampacity": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "ambient_correction": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "grouping_correction": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "adiabatic_k": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "voltage_drop_limit": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "resistivity": {"origin":"illustrative", "note":"SYNTHETIC"},
+    "reactance": {"origin":"illustrative", "note":"SYNTHETIC"}
+  },
   "standard_ratings_a": [6,10,13,16,20,25,32,40,50,63,80,100,125,160,200,250,315,400],
   "standard_sections_mm2": [1.5,2.5,4,6,10,16,25,35,50,70,95,120,150,185,240,300],
   "device_classes": {

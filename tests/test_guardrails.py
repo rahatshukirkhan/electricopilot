@@ -18,8 +18,8 @@ def test_clean_narrative_passes():
     assert ok and unverified == []
 
 
-def test_smuggled_number_flagged_and_downgraded():
-    r = size(make_request(**CASE1))
+def test_smuggled_number_flagged_and_downgraded(verified_pack):
+    r = size(make_request(**CASE1), data_pack=verified_pack)
     text = "Рекомендую увеличить до 777 мм² для запаса."  # 777 absent from result
     ok, unverified = check_numeric_provenance(text, r, strict=True)
     assert not ok and "777" in unverified

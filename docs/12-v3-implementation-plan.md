@@ -81,13 +81,14 @@
   через `importlib.resources` и `__file__` — он нужен Vercel). Функция
   `list_packs() -> list[DataPackMeta]`.
 - `models.py`: `DataStatus = Literal["illustrative", "public_standard", "licensed"]`;
-  в `DataPackMeta` добавить `source_document: str | None`. Новый текст
-  `PROVENANCE_NOTE_PUBLIC` («значения внесены из публичного государственного стандарта
-  <…>, транскрипция проверена инженером <ФИО/дата>; документ не воспроизводится целиком»).
-  Отразить в docs/03 и docs/04.
+  в `DataPackMeta` добавить `source_document: str | None`. Статус описывает происхождение,
+  но не доказывает проверку: утверждение о верификации разрешено только при непустых данных
+  реального проверяющего для каждой использованной числовой секции; иначе `NEEDS_REVIEW`
+  (уточнение PER-5, контракт в docs/03 и docs/04).
 - В JSON каждая таблица получает в `_citation` поля `source_document`, `source_table`,
   `entered_by`, `verified_by` (строки, могут быть пустыми до проверки).
-- API: `GET /api/packs` → `[{name, version, status, source_note}]`; query-параметр
+- API: `GET /api/packs` → `[{name, version, status, verification_status,
+  publication_ready, untrusted_sections, source_note}]`; query-параметр
   `?pack=<name>` у `/api/size`, `/api/viz`, `/api/explain`, `/api/verify`; у проекта —
   поле `norm_pack` (используется в `/api/project-report` и всех экспортных эндпоинтах).
   `SizingRequest` не трогаем (замороженный контракт) — пак передаётся рядом.

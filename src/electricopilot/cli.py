@@ -151,7 +151,11 @@ def demo(live: bool = typer.Option(False, "--live", help="использоват
 def packs() -> None:
     """Список доступных норм-пакетов (data/packs/)."""
     for meta in list_packs():
-        typer.echo(f"{meta.name:16} {meta.version:8} {meta.status:16} {meta.source_note}")
+        assessment = load_data_pack(meta.name).publication_assessment()
+        typer.echo(
+            f"{meta.name:16} {meta.version:8} {meta.status:16} "
+            f"{assessment.verification_status:14} {meta.source_note}"
+        )
 
 
 @app.command()

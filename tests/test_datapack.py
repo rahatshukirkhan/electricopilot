@@ -5,6 +5,9 @@ import pytest
 
 from electricopilot.data.loader import load_data_pack, pack_key
 from electricopilot.exceptions import DataPackError
+from electricopilot.studio_api import packs_endpoint
+
+from scripts.pack_review import publication_payload
 
 
 def test_loads_and_is_illustrative(pack):
@@ -48,3 +51,26 @@ def test_missing_ampacity_combo_raises(pack):
 def test_bad_path_raises():
     with pytest.raises(DataPackError):
         load_data_pack("/nonexistent/pack.json")
+
+
+def test_pue_rk_public_origin_is_not_publication_readiness():
+    pack = load_data_pack("pue-rk")
+    assessment = pack.publication_assessment()
+    assert pack.meta.status == "public_standard"
+    assert assessment.verification_status == "NEEDS_REVIEW"
+    assert {"voltage_drop_limit", "ampacity", "device_parameters", "overload_rule"} <= set(
+        assessment.untrusted_sections
+    )
+    ampacity = next(a for a in assessment.used_sections if a.section == "ampacity")
+    assert "verified_by missing" in ampacity.issues
+
+
+def test_pack_review_and_api_expose_machine_readable_readiness():
+    pack = load_data_pack("pue-rk")
+    payload = publication_payload(pack)
+    assert payload["publication_ready"] is False
+    assert payload["verification_status"] == "NEEDS_REVIEW"
+    api_pack = next(p for p in packs_endpoint() if p["name"] == "pue-rk")
+    assert api_pack["publication_ready"] is False
+    assert api_pack["verification_status"] == "NEEDS_REVIEW"
+    assert api_pack["untrusted_sections"]

@@ -352,6 +352,57 @@ def build_pack(html: str) -> dict:
         "gG_fuse": {"i2_over_in": 1.60, "citation": {"standard": "IEC 60269"}},
     }
 
+    def _public_provenance(note: str) -> dict[str, str]:
+        return {
+            "origin": "public_standard",
+            "source_document": SOURCE_DOCUMENT,
+            "source_url": SOURCE_URL,
+            "entered_by": "",
+            "verified_by": "",
+            "verified_at": "",
+            "note": note,
+        }
+
+    provenance = {
+        "standard_ratings": {
+            "origin": "unattributed",
+            "note": "Ряд номиналов не атрибутирован отдельным проверенным источником.",
+        },
+        "standard_sections": _public_provenance(
+            "Сечения извлечены из Табл. 4 и 5 вместе с ампакитностью."
+        ),
+        "device_parameters": {
+            "origin": "unattributed",
+            "note": (
+                "Числовые параметры аппаратов имеют ссылки на стандарты, но не имеют "
+                "записи ввода и независимой проверки."
+            ),
+        },
+        "overload_rule": {
+            "origin": "unattributed",
+            "note": (
+                "Числовой коэффициент правила координации имеет цитату, но не имеет "
+                "записи ввода и независимой проверки."
+            ),
+        },
+        "ampacity": _public_provenance("Табл. 4 (Cu) и 5 (Al)."),
+        "ambient_correction": _public_provenance("Табл. 3."),
+        "grouping_correction": _public_provenance("Пункт 40."),
+        "adiabatic_k": _public_provenance("Табл. 48."),
+        "voltage_drop_limit": {
+            "origin": "illustrative",
+            "note": "Пределы не найдены в указанном источнике и сохранены из iec-stub.",
+        },
+        "resistivity": {
+            "origin": "unattributed",
+            "note": "Физические константы не атрибутированы отдельным проверенным источником.",
+        },
+        "reactance": {
+            "origin": "unattributed",
+            "note": "Физическая константа не атрибутирована отдельным проверенным источником.",
+        },
+    }
+
     pack = {
         "meta": {
             "name": "pue-rk", "version": "0.1.0", "status": "public_standard",
@@ -363,6 +414,7 @@ def build_pack(html: str) -> dict:
             ),
             "source_document": SOURCE_DOCUMENT,
         },
+        "provenance": provenance,
         "standard_ratings_a": [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400],
         "standard_sections_mm2": [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300],
         "device_classes": device_classes,

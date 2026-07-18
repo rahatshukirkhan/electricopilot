@@ -109,14 +109,13 @@ def build_sld(project: dict[str, Any], report: dict[str, Any]) -> list[Drawing]:
 
 def _draw_footer(d: Drawing, report: dict[str, Any]) -> None:
     """Advisory disclaimer + data-pack provenance on every sheet (docs/13 §each doc carries it)."""
-    pack = report.get("norm_pack", {}) or {}
-    pack_s = f"норм-пакет: {pack.get('name', '?')} ({pack.get('status', '?')})" if pack else ""
     d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 3.5,
-               "Рекомендательный расчёт ElectriCopilot — НЕ сертификация; требуется проверка и "
-               "подпись инженера.", height=2.2, anchor="start", color="#8a5a00"))
-    if pack_s:
-        d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 0.5, pack_s, height=2.0, anchor="start",
-                   color="#556"))
+               str(report.get("disclaimer", "")), height=1.65, anchor="start", color="#8a5a00"))
+    d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 1.0,
+               str(report.get("signoff_notice", "UNSIGNED_ADVISORY")),
+               height=1.65, anchor="start", color="#8a5a00"))
+    d.add(Text(MARGIN + 190, SHEET_H - MARGIN - 1.0,
+               str(report.get("data_identity", "")), height=1.65, anchor="start", color="#556"))
 
 
 def sld_sheets_svg(project: dict[str, Any], report: dict[str, Any]) -> list[str]:
