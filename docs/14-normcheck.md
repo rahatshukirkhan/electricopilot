@@ -1,0 +1,143 @@
+# Нормоконтроль щита (фаза 3a)
+
+## 1. Назначение и границы
+
+Нормоконтроль — детерминированный второй слой поверх серверного расчёта щита. Он
+получает проект, заново вызывает числовое ядро для каждой цепи через
+`build_project_report()`/`size()` и возвращает проверяемые замечания. Поля
+`circuit.result` и другие сохранённые клиентские снимки не являются входом правил.
+
+Результат рекомендательный и не заменяет инженерную экспертизу. Отсутствие замечания
+не означает полного соответствия нормам: правило без входных данных, конфигурации или
+доверенного источника возвращает `not_checked`, а не скрытый PASS.
+
+Фаза не включает импорт XLSX/CSV, каталог оборудования и изменение проекта на сервере.
+
+## 2. Контракт результата
+
+`Finding`:
+
+| Поле | Тип | Смысл |
+|---|---|---|
+| `rule_id` | `R01`…`R10` | стабильный идентификатор правила |
+| `severity` | `error | warning | info` | приоритет правила |
+| `status` | `violation | not_checked` | найдено нарушение либо проверка невозможна |
+| `scope` | `circuit | board` | область |
+| `circuit_id`, `circuit_ref` | `str | null` | связь со строкой щита |
+| `title`, `detail` | `str` | краткое и полное объяснение |
+| `observed`, `required` | `dict` | только детерминированные значения |
+| `citation` | `Citation | null` | источник правила, если он задан паком |
+| `source_section` | `str` | `normcheck.Rxx` |
+| `source_trusted` | `bool` | результат провенанс-гейта для секции |
+| `reason` | `str | null` | код причины `not_checked` |
+
+Сортировка стабильна: `error → warning → info`, затем `circuit_ref`, затем
+`rule_id`, затем `status`. API возвращает также summary:
+`{errors, warnings, infos, not_checked, total}`. Счётчики severity включают только
+`violation`; `not_checked` считается отдельно.
+
+## 3. BoardContext и реестр
+
+Runner собирает `BoardContext` из исходного проекта, выбранного `DataPack`, свежего
+`project report` и свежих `SizingResult`. Реестр содержит ровно одну чистую функцию на
+правило. Правила не вызывают LLM, сеть или часы и не мутируют проект/пак.
+
+Нормативные параметры доступны только через `DataPack.normcheck_rule("Rxx")`.
+Python и JavaScript не содержат дубликатов порогов.
+Если observed зависит от sizing-результата (R01/R03/R04/R08/R10), trust-гейт включает
+не только `normcheck.Rxx`, но и все числовые секции ядра, участвующие в получении этого
+observed. Недоверенная зависимость также переводит правило в `not_checked`.
+
+## 4. Раздел дата-пака
+
+```json
+{
+  "provenance": {
+    "normcheck.R05": {
+      "origin": "illustrative",
+      "source_document": "SYNTHETIC normcheck fixture",
+      "entered_by": "fixture",
+      "verified_by": null,
+      "verified_at": null
+    }
+  },
+  "normcheck": {
+    "R05": {
+      "max_imbalance_pct": 20,
+      "citation": {
+        "standard": "SYNTHETIC",
+        "note": "ILLUSTRATIVE threshold; not an IEC value"
+      }
+    }
+  }
+}
+```
+
+Числа `iec-stub` синтетические и явно `illustrative`. В `pue-rk` правила без
+официально извлечённого и проверенного раздела не конфигурируются: runner возвращает
+`not_checked/rule_not_configured`. Для тестов активации используется копия пака с
+полностью атрибутированным `provenance["normcheck.Rxx"]`; это не shipped norm data.
+
+Наличие конфигурации недостаточно для нормативного вывода. Rule source считается
+доверенным только по общему PER-5 гейту: допустимое происхождение, документ/URL для
+public-standard, `entered_by`, `verified_by`, `verified_at`. Недоверенная секция
+возвращает `not_checked/untrusted_source` вместе с наблюдаемыми данными, но не
+`violation`.
+
+## 5. Правила R01–R10
+
+| ID | Scope | Severity | Конфигурация пака | Вход проекта |
+|---|---|---|---|---|
+| R01 | circuit | error | citation | свежий `SizingResult.overall_status` и governing |
+| R02 | circuit | error | `max_rcd_ma` | `purpose=socket`, `meta.rcd` |
+| R03 | circuit | error | `max_total_vd_pct_by_purpose` | `supply.feeder.{length_m,section_mm2,material}` |
+| R04 | circuit | warning | citation | `supply.incomer.In_a`, рассчитанный отходящий In |
+| R05 | board | warning | `max_imbalance_pct` | свежий фазный rollup |
+| R06 | board | warning | `min_spare_pct` | `ways_total`, количество цепей |
+| R07 | circuit | warning | `motor_disallowed_curves` | purpose и `trip_curve_type` |
+| R08 | circuit | error | `min_al_section_mm2` | материал и рассчитанное сечение |
+| R09 | circuit | warning | citation | `prospective_fault_current_a` |
+| R10 | circuit | info | `pe_section_table` | `meta.pe_section_mm2` и рассчитанное фазное сечение |
+
+R03 вычисляет падение на фидере детерминированно по максимальному фактическому фазному
+току свежего report,
+напряжению, длине, сечению и `pack.resistivity(material)`, затем складывает его с
+рассчитанным ΔU цепи. Нет любого обязательного поля — `missing_input`.
+
+`pe_section_table` — упорядоченный список строк. Каждая строка задаёт границу
+`phase_max_mm2` (последняя может быть `null`) и ровно одно из:
+`same_as_phase`, `fixed_mm2`, `factor`. Все границы/коэффициенты принадлежат паку.
+
+## 6. API и Studio
+
+`POST /api/normcheck` с `{project}` возвращает:
+
+```json
+{
+  "findings": [],
+  "summary": {"errors": 0, "warnings": 0, "infos": 0, "not_checked": 10, "total": 10},
+  "norm_pack": {"name": "iec-stub", "version": "0.1.0", "status": "illustrative"},
+  "disclaimer": "…",
+  "signoff_notice": "UNSIGNED_ADVISORY — …",
+  "narrative": null
+}
+```
+
+Normcheck доступен без LLM-ключа. Опциональный LLM-нарратив запускается только после
+runner и не может менять findings/summary. При успехе `narrative` — стандартный объект
+`LlmNarrative`; без ключа это `null`. Все числа текста должны совпадать с typed числами
+findings/summary; иначе narrative отклоняется и возвращается `null`.
+
+Studio показывает кнопку и панель «Нормоконтроль», summary, статус/версию пака,
+дисклеймер и `UNSIGNED_ADVISORY`. Circuit finding содержит переход к редактору, а строка
+schedule получает маркер максимальной severity. `not_checked` визуально не маскируется
+под PASS.
+
+## 7. Приёмка
+
+- позитивный и негативный offline-тест для каждого активируемого R01–R10;
+- отдельные тесты сортировки, изменения порога в паке, неполных входов,
+  недоверенного источника, `pue-rk` и отсутствия LLM-ключа;
+- демо: пример щита, затем убрать УЗО у розеточной цепи и увеличить длину;
+- `pytest`, Ruff и strict mypy; визуальная проверка Studio;
+- отдельный PR `feat/v3-phase-3a-normcheck`, стоп перед мержем.

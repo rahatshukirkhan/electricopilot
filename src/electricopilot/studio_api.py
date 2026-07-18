@@ -30,6 +30,7 @@ from .llm.explain import explain_render, explain_render_template
 from .llm.intake import intake_parse
 from .llm.verify import verify_deterministic_check, verify_review
 from .models import SizingRequest, SizingResult, VerificationVerdict
+from .normcheck import build_normcheck_report, narrate_findings
 from .project import build_project_report
 from .viz import build_visuals
 
@@ -190,6 +191,23 @@ def project_report_endpoint(body: ProjectBody, sld: bool = False) -> dict[str, A
     if sld:
         report = {**report, "sld": _sld_preview(body.project, report)}
     return report
+
+
+@app.post("/api/normcheck")
+def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
+    """Run deterministic R01-R10 over fresh server-side board calculations (docs/14)."""
+    pack = _pack_or_400(body.project.get("norm_pack"))
+    report = _catch_pack_error(build_normcheck_report, body.project, pack)
+    cfg = get_config()
+    if cfg.llm_available:
+        try:
+            narrative = narrate_findings(
+                report.findings, report.summary, _client(), model=cfg.model_fast,
+            )
+            report = report.model_copy(update={"narrative": narrative})
+        except (LlmConfigError, LlmError):
+            pass
+    return report.model_dump()  # type: ignore[no-any-return]
 
 
 def _safe_filename(project: dict[str, Any]) -> str:

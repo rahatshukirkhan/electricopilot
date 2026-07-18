@@ -57,6 +57,7 @@
       </div>
       <div class="board-actions">
         <span id="boardRollup" class="badge">—</span>
+        <button id="btnNormcheck" class="primary" title="Детерминированная проверка R01–R10">✓ Нормоконтроль</button>
         <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)">📦 Пакет документов</button>
         <button id="btnPrint" class="ghost" title="Печатная страница / PDF">🖨 Печать</button>
         <button id="btnReport" class="ghost">Отчёт по щиту</button>
@@ -82,6 +83,17 @@
     </div>
 
     <div class="totals" id="boardTotals"></div>
+
+    <section class="panel norm-panel">
+      <div class="panel-h">
+        Нормоконтроль
+        <span id="normSummary" class="norm-summary dim">не запускался</span>
+      </div>
+      <div id="normFindings" class="norm-findings">
+        <span class="dim">Нажми «Нормоконтроль»: правила пересчитают проект на сервере и не используют сохранённые клиентские результаты.</span>
+      </div>
+      <div id="normIdentity" class="norm-identity"></div>
+    </section>
 
     <section class="panel sld-panel">
       <div class="panel-h">Однолинейная схема

@@ -79,7 +79,7 @@ function sampleProject() {
 }
 
 // ---------- state ----------
-let PROJ = null, CID = null, VIZ = null, HEALTH = { mode: 'fallback' }, PACKS = [];
+let PROJ = null, CID = null, VIZ = null, NORMCHECK = null, HEALTH = { mode: 'fallback' }, PACKS = [];
 function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
 function packStatusBadge(el, pack) {
   const status = pack?.status || '';
@@ -179,6 +179,7 @@ async function renderProject() {
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
   $('projDisclaimer').textContent = 'Рекомендательный расчёт; требуется подпись инженера по каждой цепи и по щиту.';
   renderPackSelect();
+  resetNormcheckPanel();
   const body = $('scheduleBody');
   if (!p.circuits.length) { body.innerHTML = `<tr><td colspan="14" class="empty" style="border:none">Пусто — добавь цепь или опиши словами ниже.</td></tr>`; $('boardTotals').innerHTML = ''; topBadge(''); $('boardRollup').textContent = '—'; $('boardRollup').className = 'badge'; return; }
   body.innerHTML = `<tr><td colspan="14" style="color:var(--dim)">пересчёт цепей движком…</td></tr>`;
@@ -243,9 +244,79 @@ $('btnNlAdd').addEventListener('click', nlAddCircuit);
 $('nlQuick').addEventListener('keydown', e => { if (e.key === 'Enter') nlAddCircuit(); });
 $('btnExportProj').addEventListener('click', () => exportProject(PROJ));
 $('btnReport').addEventListener('click', downloadReport);
+$('btnNormcheck').addEventListener('click', loadNormcheck);
 $('btnBundle').addEventListener('click', downloadBundle);
 $('btnPrint').addEventListener('click', () => { if (PROJ) go('/p/' + PROJ.id + '/print'); });
 $('btnSldRefresh').addEventListener('click', loadSldPreview);
+
+// ---------- deterministic normcheck (docs/14) ----------
+function resetNormcheckPanel() {
+  NORMCHECK = null;
+  $('normSummary').textContent = 'не запускался';
+  $('normFindings').innerHTML = '<span class="dim">Нажми «Нормоконтроль»: правила пересчитают проект на сервере и не используют сохранённые клиентские результаты.</span>';
+  $('normIdentity').textContent = '';
+  clearNormMarkers();
+}
+function clearNormMarkers() {
+  document.querySelectorAll('#scheduleBody tr[data-cid]').forEach(tr => {
+    tr.classList.remove('norm-error', 'norm-warning', 'norm-info', 'norm-review');
+    tr.querySelectorAll('.norm-marker').forEach(el => el.remove());
+  });
+}
+function citeText(c) {
+  if (!c) return 'источник правила не задан';
+  return [c.standard, c.clause ? `§ ${c.clause}` : '', c.table ? `табл. ${c.table}` : ''].filter(Boolean).join(' · ');
+}
+function maxSeverity(a, b) {
+  const rank = { error: 3, warning: 2, info: 1, review: 0 };
+  if (!a) return b;
+  return (rank[b] || 0) > (rank[a] || 0) ? b : a;
+}
+function applyNormMarkers(findings) {
+  clearNormMarkers();
+  const byCircuit = {};
+  findings.filter(f => f.circuit_id).forEach(f => {
+    const level = f.status === 'not_checked' ? 'review' : f.severity;
+    byCircuit[f.circuit_id] = maxSeverity(byCircuit[f.circuit_id], level);
+  });
+  document.querySelectorAll('#scheduleBody tr[data-cid]').forEach(tr => {
+    const level = byCircuit[tr.dataset.cid]; if (!level) return;
+    tr.classList.add('norm-' + level);
+    const marker = document.createElement('span'); marker.className = 'norm-marker ' + level;
+    marker.textContent = level === 'review' ? '?' : '!';
+    marker.title = level === 'review' ? 'Есть непроверенные правила' : `Finding: ${level}`;
+    tr.querySelector('td')?.appendChild(marker);
+  });
+}
+function renderNormcheck(rep) {
+  NORMCHECK = rep;
+  const s = rep.summary;
+  $('normSummary').textContent = `${s.errors} ошибок · ${s.warnings} предупреждений · ${s.infos} инфо · ${s.not_checked} не проверено`;
+  $('normFindings').innerHTML = rep.findings.length ? rep.findings.map(f => {
+    const unchecked = f.status === 'not_checked';
+    const label = unchecked ? 'НЕ ПРОВЕРЕНО' : f.severity.toUpperCase();
+    const open = f.circuit_id ? `<button class="ghost norm-open" data-norm-cid="${esc(f.circuit_id)}">${esc(f.circuit_ref || 'цепь')} →</button>` : '';
+    return `<article class="norm-card ${esc(f.severity)} ${unchecked ? 'not-checked' : ''}">
+      <span class="norm-sev">${label}</span>
+      <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
+        <div class="norm-values">observed: ${esc(JSON.stringify(f.observed))}<br>required: ${esc(JSON.stringify(f.required))}</div>
+        <div class="norm-cite">${esc(citeText(f.citation))} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
+      </div>${open}</article>`;
+  }).join('') : '<span class="dim">Нарушений и непроверенных правил не найдено.</span>';
+  $('normIdentity').textContent = `${rep.data_identity} ${rep.provenance_note} ${rep.signoff_notice} ${rep.disclaimer}`;
+  applyNormMarkers(rep.findings);
+}
+async function loadNormcheck() {
+  if (!PROJ) return;
+  $('normSummary').textContent = 'проверяю R01–R10…';
+  $('normFindings').innerHTML = '<span class="dim">Сервер заново пересчитывает все цепи…</span>';
+  try { renderNormcheck(await postJSON('/api/normcheck', { project: PROJ })); }
+  catch (e) { $('normSummary').textContent = 'ошибка'; $('normFindings').innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
+}
+$('normFindings').addEventListener('click', e => {
+  const cid = e.target.closest('[data-norm-cid]')?.dataset.normCid;
+  if (cid) go('/p/' + PROJ.id + '/c/' + cid);
+});
 
 // ---------- single-line preview + document bundle (docs/13) ----------
 function renderSldInto(sld) {  // sld = {svg, sheets} from the report (?sld=1) or /api/project-sld
