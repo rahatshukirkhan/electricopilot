@@ -74,8 +74,20 @@ def health() -> dict[str, str]:
 
 @app.get("/api/packs")
 def packs_endpoint() -> list[dict[str, Any]]:
-    return [{"name": m.name, "version": m.version, "status": m.status,
-             "source_note": m.source_note} for m in list_packs()]
+    result: list[dict[str, Any]] = []
+    for meta in list_packs():
+        pack = load_data_pack(meta.name)
+        assessment = pack.publication_assessment()
+        result.append({
+            "name": meta.name,
+            "version": meta.version,
+            "status": meta.status,
+            "source_note": meta.source_note,
+            "verification_status": assessment.verification_status,
+            "publication_ready": assessment.verification_status == "VERIFIED",
+            "untrusted_sections": assessment.untrusted_sections,
+        })
+    return result
 
 
 def _pack_or_400(pack: Optional[str]) -> DataPack:

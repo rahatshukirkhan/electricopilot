@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from pathlib import Path
 
 import ezdxf
 from openpyxl import load_workbook
@@ -96,7 +97,7 @@ def test_sld_svg_has_key_content():
     svgs = sld_sheets_svg(board, report)
     assert len(svgs) == 1
     svg = svgs[0]
-    for token in ["L1", "L2", "L3", "Розетки кухни", "Ввод", "Однолинейная", "PASS"]:
+    for token in ["L1", "L2", "L3", "Розетки кухни", "Ввод", "Однолинейная", "REVIEW"]:
         assert token in svg, token
 
 
@@ -185,6 +186,54 @@ def test_bundle_has_all_documents():
     # the embedded xlsx and dxf are themselves valid
     load_workbook(io.BytesIO(zf.read("cable_journal.xlsx")))
     ezdxf.read(io.StringIO(zf.read("sld.dxf").decode("utf-8")))
+
+
+def test_pue_rk_trust_status_is_consistent_in_every_document_surface():
+    board = _board(1)
+    board["norm_pack"] = "pue-rk"
+    report = build_project_report(board)
+    expected = ["pue-rk", "v0.1.0", "public_standard", "NEEDS_REVIEW"]
+    assert report["board"]["status"] == "NEEDS_REVIEW"
+    assert report["norm_pack"]["verification_status"] == "NEEDS_REVIEW"
+    assert "проверена инженером" not in report["provenance_note"]
+    for token in [*expected, "UNSIGNED_ADVISORY"]:
+        assert token in report["markdown"]
+
+    drawing = build_sld(board, report)[0]
+    svg = render_svg(drawing)
+    dxf = ezdxf.read(io.StringIO(render_dxf(drawing).decode("utf-8")))
+    dxf_text = " ".join(
+        e.dxf.text for e in dxf.modelspace() if e.dxftype() in ("TEXT", "MTEXT")
+    )
+    for surface in (svg, dxf_text):
+        for token in [*expected, "UNSIGNED_ADVISORY"]:
+            assert token in surface
+        assert report["disclaimer"] in surface
+
+    for table in (build_cable_journal(board, report), build_boq(board, report)):
+        notes = " ".join(table.notes)
+        for token in [*expected, "UNSIGNED_ADVISORY"]:
+            assert token in notes
+        assert report["disclaimer"] in notes
+
+    zf = zipfile.ZipFile(io.BytesIO(build_bundle(board)))
+    for name in ("report.md", "sld.svg"):
+        text = zf.read(name).decode("utf-8")
+        for token in [*expected, "UNSIGNED_ADVISORY"]:
+            assert token in text
+    for name in ("cable_journal.xlsx", "boq.xlsx"):
+        workbook = load_workbook(io.BytesIO(zf.read(name)))
+        text = " ".join(
+            str(cell)
+            for row in workbook.active.iter_rows(values_only=True)
+            for cell in row
+            if cell is not None
+        )
+        for token in [*expected, "UNSIGNED_ADVISORY"]:
+            assert token in text
+        assert report["disclaimer"] in text
+    app_js = (Path(__file__).parents[1] / "web/app.js").read_text(encoding="utf-8")
+    assert "rep.data_identity" in app_js and "rep.signoff_notice" in app_js
 
 
 def test_bundle_multi_sheet_adds_extra_sld_files():

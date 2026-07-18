@@ -26,7 +26,7 @@ def render_markdown(
 ) -> str:
     r = result
     cab, prot = r.selected_cable, r.selected_protection
-    illus = r.data_pack.status == "illustrative"
+    data_needs_review = r.data_provenance.verification_status == "NEEDS_REVIEW"
     L: list[str] = []
     L.append("# ElectriCopilot — отчёт подбора кабеля и аппарата защиты")
     L.append("")
@@ -65,8 +65,11 @@ def render_markdown(
 
     # -- checks --
     L.append("## Проверки координации и пределов")
-    if illus:
-        L.append("> _Вердикты вычислены относительно СИНТЕТИЧЕСКОГО норм-пакета (не IEC-значения)._")
+    if data_needs_review:
+        L.append(
+            "> _Вердикты требуют проверки данных: арифметический PASS не является полным "
+            "нормативным соответствием._"
+        )
     L.append("")
     L.append("| Проверка | Условие | Результат | Детали | Ссылка |")
     L.append("|---|---|---|---|---|")

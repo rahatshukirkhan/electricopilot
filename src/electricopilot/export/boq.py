@@ -52,6 +52,8 @@ def build_boq(project: dict[str, Any], report: dict[str, Any]) -> Table:
     notes = [
         f"Длины кабелей — с запасом (коэффициент {margin:g}).",
         "Аппараты — обобщённо (класс/номинал/кривая/УЗО); артикулы назначаются по каталогу.",
+        report.get("data_identity", ""),
+        report.get("signoff_notice", ""),
         report.get("provenance_note", ""),
         report.get("disclaimer", ""),
     ]

@@ -11,7 +11,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from ..exceptions import DataPackError
 from ..models import (
@@ -19,6 +19,9 @@ from ..models import (
     CitationKey,
     CircuitPurpose,
     DataPackMeta,
+    DataProvenanceSummary,
+    DataSectionAssessment,
+    DataSourceRecord,
     DeviceClass,
     InstallMethod,
     Insulation,
@@ -27,6 +30,19 @@ from ..models import (
 
 DEFAULT_PACK_NAME = "iec-stub"
 PACKS_SUBDIR = "data/packs"
+NUMERIC_PROVENANCE_SECTIONS = (
+    "standard_ratings",
+    "standard_sections",
+    "device_parameters",
+    "overload_rule",
+    "ampacity",
+    "ambient_correction",
+    "grouping_correction",
+    "adiabatic_k",
+    "voltage_drop_limit",
+    "resistivity",
+    "reactance",
+)
 
 
 def pack_key(x: float | int) -> str:
@@ -40,6 +56,7 @@ def _cite(d: dict[str, Any]) -> Citation:
 
 class DataPack(BaseModel):
     meta: DataPackMeta
+    provenance: dict[str, DataSourceRecord] = Field(default_factory=dict)
     standard_ratings_a: list[float]
     standard_sections_mm2: list[float]
     device_classes: dict[str, Any]
@@ -168,6 +185,59 @@ class DataPack(BaseModel):
         if entry is None:
             raise DataPackError(f"no trip curve for device class '{device}'")
         return entry, _cite(entry.get("citation", {"standard": "n/a"}))
+
+    def _source_record(self, section: str) -> DataSourceRecord:
+        """Return an explicit section record, or a conservative meta-derived fallback."""
+        source = self.provenance.get(section)
+        if source is not None:
+            return source
+        return DataSourceRecord(
+            origin=self.meta.status,
+            source_document=self.meta.source_document,
+            note=self.meta.source_note,
+        )
+
+    def assess_provenance(self, sections: list[str]) -> DataProvenanceSummary:
+        """Assess only the numeric families actually consumed by a result."""
+        assessments: list[DataSectionAssessment] = []
+        seen: set[str] = set()
+        for section in sections:
+            if section in seen:
+                continue
+            seen.add(section)
+            source = self._source_record(section)
+            issues: list[str] = []
+            if source.origin not in ("public_standard", "licensed"):
+                issues.append(f"origin={source.origin}")
+            if not source.source_document:
+                issues.append("source_document missing")
+            if source.origin == "public_standard" and not source.source_url:
+                issues.append("source_url missing")
+            if not source.entered_by:
+                issues.append("entered_by missing")
+            if not source.verified_by:
+                issues.append("verified_by missing")
+            if not source.verified_at:
+                issues.append("verified_at missing")
+            assessments.append(DataSectionAssessment(
+                section=section,
+                source=source,
+                trusted=not issues,
+                issues=issues,
+            ))
+        untrusted = [a.section for a in assessments if not a.trusted]
+        return DataProvenanceSummary(
+            pack_name=self.meta.name,
+            pack_version=self.meta.version,
+            pack_origin=self.meta.status,
+            verification_status="NEEDS_REVIEW" if untrusted else "VERIFIED",
+            used_sections=assessments,
+            untrusted_sections=untrusted,
+        )
+
+    def publication_assessment(self) -> DataProvenanceSummary:
+        """Assess every numeric family required for a publishable sizing pack."""
+        return self.assess_provenance(list(NUMERIC_PROVENANCE_SECTIONS))
 
 
 def _packs_dir() -> Path:

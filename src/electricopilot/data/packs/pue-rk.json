@@ -6,6 +6,77 @@
     "source_note": "Значения ампакитности/поправок/адиабатики извлечены кодом из официального текста ПУЭ РК (Табл. 3, 4, 5, 48 Прил.1; п.40). vd_limits_pct НЕ найден в Прил.1 и сохранён как в iec-stub (см. _citation.note того раздела) — требует отдельного источника для повышения статуса.",
     "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»"
   },
+  "provenance": {
+    "standard_ratings": {
+      "origin": "unattributed",
+      "note": "Ряд номиналов не атрибутирован отдельным проверенным источником."
+    },
+    "standard_sections": {
+      "origin": "public_standard",
+      "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»",
+      "source_url": "https://adilet.zan.kz/rus/docs/V1500010851",
+      "entered_by": "",
+      "verified_by": "",
+      "verified_at": "",
+      "note": "Сечения извлечены из Табл. 4 и 5 вместе с ампакитностью."
+    },
+    "device_parameters": {
+      "origin": "unattributed",
+      "note": "Числовые параметры аппаратов имеют ссылки на стандарты, но не имеют записи ввода и независимой проверки."
+    },
+    "overload_rule": {
+      "origin": "unattributed",
+      "note": "Числовой коэффициент правила координации имеет цитату, но не имеет записи ввода и независимой проверки."
+    },
+    "ampacity": {
+      "origin": "public_standard",
+      "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»",
+      "source_url": "https://adilet.zan.kz/rus/docs/V1500010851",
+      "entered_by": "",
+      "verified_by": "",
+      "verified_at": "",
+      "note": "Табл. 4 (Cu) и 5 (Al)."
+    },
+    "ambient_correction": {
+      "origin": "public_standard",
+      "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»",
+      "source_url": "https://adilet.zan.kz/rus/docs/V1500010851",
+      "entered_by": "",
+      "verified_by": "",
+      "verified_at": "",
+      "note": "Табл. 3."
+    },
+    "grouping_correction": {
+      "origin": "public_standard",
+      "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»",
+      "source_url": "https://adilet.zan.kz/rus/docs/V1500010851",
+      "entered_by": "",
+      "verified_by": "",
+      "verified_at": "",
+      "note": "Пункт 40."
+    },
+    "adiabatic_k": {
+      "origin": "public_standard",
+      "source_document": "ПУЭ РК (Правила устройства электроустановок), приказ Министра энергетики РК от 20.03.2015 №230, Приложение 1 «Технические данные»",
+      "source_url": "https://adilet.zan.kz/rus/docs/V1500010851",
+      "entered_by": "",
+      "verified_by": "",
+      "verified_at": "",
+      "note": "Табл. 48."
+    },
+    "voltage_drop_limit": {
+      "origin": "illustrative",
+      "note": "Пределы не найдены в указанном источнике и сохранены из iec-stub."
+    },
+    "resistivity": {
+      "origin": "unattributed",
+      "note": "Физические константы не атрибутированы отдельным проверенным источником."
+    },
+    "reactance": {
+      "origin": "unattributed",
+      "note": "Физическая константа не атрибутирована отдельным проверенным источником."
+    }
+  },
   "standard_ratings_a": [
     6,
     10,

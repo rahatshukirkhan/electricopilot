@@ -81,9 +81,12 @@ function sampleProject() {
 // ---------- state ----------
 let PROJ = null, CID = null, VIZ = null, HEALTH = { mode: 'fallback' }, PACKS = [];
 function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
-function packStatusBadge(el, status) {
-  el.textContent = { illustrative: 'синтетические', public_standard: 'публичный стандарт', licensed: 'лицензия' }[status] || status || '';
-  el.className = 'badge small ' + (status === 'illustrative' ? 'review' : (status ? 'pass' : ''));
+function packStatusBadge(el, pack) {
+  const status = pack?.status || '';
+  const origin = { illustrative: 'синтетические', public_standard: 'публичный стандарт', licensed: 'лицензия' }[status] || status;
+  const verification = pack?.verification_status || 'NEEDS_REVIEW';
+  el.textContent = [origin, verification].filter(Boolean).join(' · ');
+  el.className = 'badge small ' + (verification === 'VERIFIED' ? 'pass' : 'review');
 }
 
 // ---------- toast ----------
@@ -198,7 +201,7 @@ function renderPackSelect() {
   const cur = PROJ.norm_pack || PACKS[0]?.name || '';
   sel.innerHTML = PACKS.map(pk => `<option value="${esc(pk.name)}">${esc(pk.name)} (${esc(pk.version)})</option>`).join('');
   sel.value = cur;
-  packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur)?.status);
+  packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur));
 }
 $('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
 function rowHTML(r) {
@@ -283,7 +286,8 @@ async function renderPrint() {
   root.innerHTML = `
     <div class="print-actions no-print"><button id="doPrint" class="primary">🖨 Печать / Сохранить PDF</button> <button id="printBack" class="ghost">← Назад к щиту</button></div>
     <h1 class="ptitle">${esc(PROJ.name)} <small>${esc(PROJ.board_ref || '')}</small></h1>
-    <p class="pmeta">Питание: ${esc(sp.voltage_v || 400)} В · ${esc(sp.phases || 3)}ф · ${esc(sp.earthing || 'TN-C-S')} · мест ${b.ways.used}/${b.ways.total} · норм-пакет: ${esc(rep.norm_pack?.name || '')} (${esc(rep.norm_pack?.status || '')})</p>
+    <p class="pmeta">Питание: ${esc(sp.voltage_v || 400)} В · ${esc(sp.phases || 3)}ф · ${esc(sp.earthing || 'TN-C-S')} · мест ${b.ways.used}/${b.ways.total}</p>
+    <p class="pnote">${esc(rep.data_identity || '')}</p>
     <h2>Таблица щита (panel schedule)</h2>
     <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Итоги щита</h2>
@@ -291,6 +295,7 @@ async function renderPrint() {
     <h2>Однолинейная схема</h2>
     <div class="print-sld">${sld.svg || ''}</div>
     <p class="pnote">${esc(rep.provenance_note || '')}</p>
+    <p class="pnote"><b>${esc(rep.signoff_notice || 'UNSIGNED_ADVISORY')}</b></p>
     <p class="pnote"><b>${esc(rep.disclaimer || '')}</b></p>`;
   $('doPrint').addEventListener('click', () => window.print());
   $('printBack').addEventListener('click', () => go('/p/' + PROJ.id));

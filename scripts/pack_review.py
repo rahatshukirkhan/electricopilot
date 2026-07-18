@@ -11,6 +11,8 @@ Usage:  uv run python scripts/pack_review.py <pack-name>   # e.g. pue-rk
 """
 from __future__ import annotations
 
+import argparse
+import json
 import sys
 
 from electricopilot.data.loader import DataPack, load_data_pack
@@ -138,23 +140,88 @@ def review_citations(pack: DataPack) -> None:
             print(f"    note: {cite['note']}")
 
 
+def sanity_issues(pack: DataPack) -> list[str]:
+    """Pure, machine-facing version of the numeric checks printed by the review views."""
+    issues: list[str] = []
+    sections = sorted(pack.standard_sections_mm2)
+    labels = [format(s, "g") for s in sections]
+    for method, by_material in pack.ampacity.items():
+        if method == "_citation" or not isinstance(by_material, dict):
+            continue
+        for material, by_insulation in by_material.items():
+            for insulation, by_n in by_insulation.items():
+                for n, table in by_n.items():
+                    values = [_fnum(table.get(label)) for label in labels]
+                    prefix = f"{method}/{material}/{insulation}/n={n}: "
+                    issues.extend(prefix + issue for issue in (
+                        check_monotonic(labels, values) + check_outliers(labels, values)
+                    ))
+    for insulation, table in pack.ambient_correction.items():
+        if insulation == "_citation" or not isinstance(table, dict):
+            continue
+        ambient_labels = sorted((k for k in table if k != "_citation"), key=float)
+        values = [_fnum(table[label]) for label in ambient_labels]
+        issues.extend(
+            f"ka/{insulation}: {issue}"
+            for issue in check_monotonic(ambient_labels, values, rising=False)
+        )
+    grouping_labels = sorted(
+        (k for k in pack.grouping_correction if k != "_citation"), key=float
+    )
+    grouping_values = [_fnum(pack.grouping_correction[label]) for label in grouping_labels]
+    issues.extend(
+        f"kg: {issue}"
+        for issue in check_monotonic(grouping_labels, grouping_values, rising=False)
+    )
+    return issues
+
+
+def publication_payload(pack: DataPack) -> dict[str, object]:
+    assessment = pack.publication_assessment()
+    issues = sanity_issues(pack)
+    return {
+        "pack": pack.meta.name,
+        "version": pack.meta.version,
+        "origin": pack.meta.status,
+        "verification_status": assessment.verification_status,
+        "publication_ready": assessment.verification_status == "VERIFIED" and not issues,
+        "untrusted_sections": assessment.untrusted_sections,
+        "section_assessments": [a.model_dump() for a in assessment.used_sections],
+        "sanity_issues": issues,
+    }
+
+
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("usage: uv run python scripts/pack_review.py <pack-name>", file=sys.stderr)
-        return 2
-    name = sys.argv[1]
-    pack = load_data_pack(name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pack", help="bundled pack name or JSON path")
+    parser.add_argument("--json", action="store_true", help="machine-readable assessment")
+    args = parser.parse_args()
+    pack = load_data_pack(args.pack)
+    payload = publication_payload(pack)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload["publication_ready"] else 1
+
     print(f"pack: {pack.meta.name} {pack.meta.version} ({pack.meta.status})")
     print(f"source_note: {pack.meta.source_note}")
     if pack.meta.source_document:
         print(f"source_document: {pack.meta.source_document}")
 
-    issues = []
+    issues: list[str] = []
     issues += review_ampacity(pack)
     issues += review_ambient_correction(pack)
     issues += review_grouping_correction(pack)
     review_k_material(pack)
     review_citations(pack)
+
+    assessment = pack.publication_assessment()
+    print("\n== готовность к публикации ==")
+    print(f"  verification_status: {assessment.verification_status}")
+    print(f"  publication_ready: {payload['publication_ready']}")
+    for section in assessment.used_sections:
+        marker = "OK" if section.trusted else "NEEDS_REVIEW"
+        details = "; ".join(section.issues)
+        print(f"  {section.section}: {marker}{' — ' + details if details else ''}")
 
     print(f"\n== итог: {len(issues)} подозрительных мест ==")
     if issues:
@@ -164,7 +231,7 @@ def main() -> int:
     else:
         print("Автоматические проверки не нашли монотонность-нарушений/выбросов. "
               "Ручная сверка таблиц выше с источником всё равно обязательна.")
-    return 0
+    return 0 if payload["publication_ready"] else 1
 
 
 if __name__ == "__main__":

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from electricopilot.data.loader import DataPack, load_data_pack
+from electricopilot.data.loader import NUMERIC_PROVENANCE_SECTIONS, DataPack, load_data_pack
 from electricopilot.models import (
+    DataSourceRecord,
     InstallationConditions,
     LoadSpec,
     ProtectionSpec,
@@ -16,6 +17,37 @@ from electricopilot.models import (
 @pytest.fixture(scope="session")
 def pack() -> DataPack:
     return load_data_pack()
+
+
+def _verified_source(origin: str = "licensed") -> DataSourceRecord:
+    return DataSourceRecord.model_validate({
+        "origin": origin,
+        "source_document": "TEST FIXTURE — verified numeric source",
+        "source_url": "https://example.invalid/test-fixture",
+        "entered_by": "test-entry",
+        "verified_by": "test-reviewer",
+        "verified_at": "2026-07-19T00:00:00Z",
+    })
+
+
+@pytest.fixture()
+def verified_pack(pack: DataPack) -> DataPack:
+    """Numerically identical test pack with complete provenance; never shipped as norm data."""
+    return pack.model_copy(update={
+        "provenance": {section: _verified_source() for section in NUMERIC_PROVENANCE_SECTIONS}
+    })
+
+
+@pytest.fixture()
+def verified_public_pack() -> DataPack:
+    """pue-rk numbers with test-only complete public-standard provenance."""
+    pack = load_data_pack("pue-rk")
+    return pack.model_copy(update={
+        "provenance": {
+            section: _verified_source("public_standard")
+            for section in NUMERIC_PROVENANCE_SECTIONS
+        }
+    })
 
 
 def make_request(**k) -> SizingRequest:

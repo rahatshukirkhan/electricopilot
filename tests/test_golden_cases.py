@@ -27,7 +27,8 @@ CASES = [
 @pytest.mark.parametrize("name,inp,exp", CASES, ids=[c[0] for c in CASES])
 def test_golden_case(name, inp, exp):
     r = size(make_request(**inp))
-    assert r.overall_status == "PASS", name
+    assert r.overall_status == "NEEDS_REVIEW", name
+    assert r.data_provenance.verification_status == "NEEDS_REVIEW"
     assert r.selected_cable.cross_section_mm2 == exp["S"]
     assert r.selected_protection.In_a == exp["In"]
     assert r.selected_cable.governing_constraint == exp["gov"]
@@ -81,8 +82,9 @@ PUE_RK_CASES = [
 def test_golden_case_pue_rk(name, inp, exp):
     pack = load_data_pack("pue-rk")
     r = size(make_request(**inp), data_pack=pack)
-    assert r.overall_status == "PASS", name
+    assert r.overall_status == "NEEDS_REVIEW", name
     assert r.data_pack.status == "public_standard"
+    assert r.data_provenance.verification_status == "NEEDS_REVIEW"
     assert r.selected_cable.cross_section_mm2 == exp["S"]
     assert r.selected_protection.In_a == exp["In"]
     assert r.selected_cable.governing_constraint == exp["gov"]
@@ -121,3 +123,22 @@ def test_pue_rk_partial_coverage_fails_gracefully():
                           amb=25, grp=1, L=10, dev="MCB", iscc=5000), data_pack=pack)
     assert r.overall_status == "FAIL"
     assert r.selected_cable.cross_section_mm2 == 120  # largest B1/Cu section pue-rk covers
+
+
+def test_fully_verified_public_pack_allows_trusted_pass(verified_public_pack):
+    """Trust is data-driven: a complete public-standard fixture gets PASS without pack-name hacks."""
+    inp = PUE_RK_CASES[0][1]
+    r = size(make_request(**inp), data_pack=verified_public_pack)
+    assert r.overall_status == "PASS"
+    assert r.data_provenance.verification_status == "VERIFIED"
+    assert r.data_provenance.untrusted_sections == []
+
+
+def test_user_voltage_drop_limit_does_not_claim_pack_limit_was_used(verified_pack):
+    req = make_request(**CASES[0][1])
+    req = req.model_copy(update={
+        "protection": req.protection.model_copy(update={"max_voltage_drop_pct": 4.0})
+    })
+    r = size(req, data_pack=verified_pack)
+    used = {a.section for a in r.data_provenance.used_sections}
+    assert "voltage_drop_limit" not in used
