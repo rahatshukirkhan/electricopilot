@@ -71,6 +71,34 @@
     <div id="projectGrid" class="cards"></div>
   </section>
 
+  <!-- ============ READ-ONLY SHARE ============ -->
+  <section id="screen-shared" class="screen" hidden>
+    <div class="shared-head">
+      <div>
+        <div class="badge review">READ-ONLY · UNSIGNED_ADVISORY</div>
+        <h2 id="sharedName">Загрузка share-ссылки…</h2>
+        <p id="sharedMeta" class="dim"></p>
+      </div>
+      <p class="shared-warning">Анонимная ссылка даёт чтение любому получателю. Изменение,
+        подпись и экспорт здесь отключены; инженерные значения заново рассчитаны сервером.</p>
+    </div>
+    <div class="sched-wrap">
+      <table class="schedule">
+        <thead><tr>
+          <th>Ref</th><th>Описание</th><th>P,кВт</th><th>cosφ</th><th>Фаза</th><th>IB,A</th>
+          <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th>
+        </tr></thead>
+        <tbody id="sharedScheduleBody"></tbody>
+      </table>
+    </div>
+    <div class="totals" id="sharedTotals"></div>
+    <section class="panel sld-panel">
+      <div class="panel-h">Однолинейная схема · свежий серверный отчёт</div>
+      <div id="sharedSld" class="sld-preview"></div>
+    </section>
+    <div class="disclaimer" id="sharedIdentity"></div>
+  </section>
+
   <!-- ============ PROJECT / BOARD ============ -->
   <section id="screen-project" class="screen" hidden>
     <div class="board-head">
@@ -90,6 +118,7 @@
         <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)">📦 Пакет документов</button>
         <button id="btnPrint" class="ghost" title="Печатная страница / PDF">🖨 Печать</button>
         <button id="btnReport" class="ghost">Отчёт по щиту</button>
+        <button id="btnShare" class="ghost">🔗 Share-ссылка</button>
         <button id="btnExportProj" class="ghost">Экспорт .ecproj</button>
         <button id="btnBackDash" class="ghost">← К проектам</button>
       </div>

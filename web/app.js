@@ -18,17 +18,22 @@ function idxGet() { return jget(K_IDX, []); }
 function idxSet(a) { jset(K_IDX, a); }
 function projGet(id) { return jget(KP(id), null); }
 function setSave(state) { const el = $('saveState'); el.className = 'save ' + state; el.textContent = { saving: 'сохранение…', saved: 'сохранено', unsaved: 'не сохранено' }[state] || ''; }
-function projSet(p) {
+function projSet(p, options = {}) {
   setSave('saving');
-  p.updated_at = nowISO();
+  if (options.touch !== false) p.updated_at = nowISO();
   p.rollup = rollup(p);
   jset(KP(p.id), p);
   const idx = idxGet().filter(x => x.id !== p.id);
   idx.unshift({ id: p.id, name: p.name, board_ref: p.board_ref, updated_at: p.updated_at, rollup: p.rollup, count: (p.circuits || []).length });
   idxSet(idx);
   setSave('saved');
+  if (options.sync !== false) scheduleProjectSync(p.id);
 }
-function projDel(id) { localStorage.removeItem(KP(id)); idxSet(idxGet().filter(x => x.id !== id)); }
+function projDel(id) {
+  localStorage.removeItem(KP(id));
+  idxSet(idxGet().filter(x => x.id !== id));
+  if (SYNC_AVAILABLE) deleteRemoteProject(id);
+}
 function rollup(p) {
   const c = { PASS: 0, FAIL: 0, NEEDS_REVIEW: 0 };
   (p.circuits || []).forEach(ck => { const s = ck.result?.status; if (s in c) c[s]++; });
@@ -81,6 +86,8 @@ function sampleProject() {
 // ---------- state ----------
 let PROJ = null, CID = null, VIZ = null, NORMCHECK = null, HEALTH = { mode: 'fallback' }, PACKS = [];
 let IMPORT_FILE = null, IMPORT_RESULT = null;
+let SYNC_AVAILABLE = false;
+const PROJECT_SYNC_TIMERS = new Map();
 function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
 function packStatusBadge(el, pack) {
   const status = pack?.status || '';
@@ -103,10 +110,21 @@ function toast(msg, actionLabel, action) {
 function go(hash) { location.hash = hash; }
 function route() {
   const h = location.hash.replace(/^#/, '') || '/';
+  const ms = h.match(/^\/s\/([^/]+)$/);
   const mp = h.match(/^\/p\/([^/]+)\/print$/);
   const m = h.match(/^\/p\/([^/]+)(?:\/c\/([^/]+))?/);
-  ['dashboard', 'project', 'editor', 'print'].forEach(s => $('screen-' + s).hidden = true);
+  ['dashboard', 'project', 'editor', 'print', 'shared'].forEach(s => $('screen-' + s).hidden = true);
   $('advisory').hidden = mp ? true : false;
+  if (ms) {
+    PROJ = null;
+    show('shared');
+    crumbs([['Проекты', '#/'], ['Read-only share', '']]);
+    topBadge('');
+    setSave(''); $('saveState').textContent = 'только чтение';
+    renderShared(ms[1]);
+    return;
+  }
+  setSave('saved');
   if (mp) {
     PROJ = projGet(mp[1]);
     if (!PROJ) { go('/'); return; }
@@ -297,7 +315,7 @@ async function renderProject() {
   catch (e) { body.innerHTML = `<tr><td colspan="14" style="color:var(--bad)">Ошибка пересчёта: ${esc(e.message)}</td></tr>`; return; }
   // sync snapshots back for dashboard rollup
   rep.rows.forEach(r => { const c = p.circuits.find(x => x.id === r.id); if (c) c.result = { status: r.status, section: null, In: null, IB: r.IB_a, Iz: r.Iz_a, vd: r.dU_pct, governing: r.governing }; });
-  projSet(p);
+  projSet(p, { touch: false, sync: false });
   body.innerHTML = rep.rows.map(r => rowHTML(r)).join('');
   const b = rep.board;
   topBadge(b.status);
@@ -313,20 +331,20 @@ function renderPackSelect() {
   packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur));
 }
 $('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
-function rowHTML(r) {
+function rowHTML(r, readOnly = false) {
   const sign = r.signoff === 'SIGNED' ? ' ✔' : '';
   return `<tr data-cid="${r.id}">
     <td class="mono">${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${fmt(r.pf)}</td>
     <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td>
     <td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td>
-    <td class="st-cell ${r.status}">${r.status}${sign}</td>
+    <td class="st-cell ${r.status}">${r.status}${sign}</td>${readOnly ? '' : `
     <td><div class="rowact">
       <button data-edit="${r.id}" title="Править" aria-label="Править цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
       <button data-dupc="${r.id}" title="Дублировать" aria-label="Дублировать цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
       <button data-delc="${r.id}" title="Удалить" aria-label="Удалить цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"/></svg></button>
-    </div></td></tr>`;
+    </div></td>`}</tr>`;
 }
-function renderTotals(b) {
+function renderTotals(b, targetId = 'boardTotals') {
   const t = b.totals, d = b.demand, w = b.ways, ph = t.phase;
   const phaseKeys = b.topology?.phases === 1 ? ['L1'] : ['L1', 'L2', 'L3'];
   const mx = Math.max(...phaseKeys.map(k => ph[k].A), 1);
@@ -334,7 +352,7 @@ function renderTotals(b) {
     ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}`
     : 'однофазный щит · перекос неприменим (R05)';
   const phaseTitle = b.topology?.phases === 1 ? 'Фазный ток (реальный)' : 'Баланс фаз (реальный)';
-  $('boardTotals').innerHTML = `
+  $(targetId).innerHTML = `
     <div class="totbox"><h4>Подключённая нагрузка</h4><div class="big">${fmt(t.connected_kw)} кВт</div><div style="color:var(--dim)">${fmt(t.connected_kva)} кВА</div></div>
     <div class="totbox"><h4>${phaseTitle}</h4>
       <div class="phbar">${phaseKeys.map(k => `<div class="b" style="height:${Math.round(ph[k].A / mx * 100)}%"><span>${k}<br>${fmt(ph[k].A, 0)}A</span></div>`).join('')}</div>
@@ -356,6 +374,7 @@ $('btnAddCircuit').addEventListener('click', () => { const c = newCircuit(); c.s
 $('btnNlAdd').addEventListener('click', nlAddCircuit);
 $('nlQuick').addEventListener('keydown', e => { if (e.key === 'Enter') nlAddCircuit(); });
 $('btnExportProj').addEventListener('click', () => exportProject(PROJ));
+$('btnShare').addEventListener('click', createShareLink);
 $('btnReport').addEventListener('click', downloadReport);
 $('btnNormcheck').addEventListener('click', loadNormcheck);
 $('btnBundle').addEventListener('click', downloadBundle);
@@ -432,8 +451,8 @@ $('normFindings').addEventListener('click', e => {
 });
 
 // ---------- single-line preview + document bundle (docs/13) ----------
-function renderSldInto(sld) {  // sld = {svg, sheets} from the report (?sld=1) or /api/project-sld
-  const el = $('sldPreview');
+function renderSldInto(sld, targetId = 'sldPreview') {  // sld = {svg, sheets} from a fresh report
+  const el = $(targetId);
   if (!sld || !sld.svg) { el.innerHTML = '<span class="dim">Нет цепей — добавь цепь.</span>'; return; }
   const note = sld.sheets > 1 ? `<div class="dim" style="margin-bottom:6px">Листов: ${sld.sheets} (показан 1-й; полный набор — в пакете документов).</div>` : '';
   el.innerHTML = note + sld.svg;
@@ -711,12 +730,136 @@ async function postJSON(url, body) {
   return r.json();
 }
 
+// ---------- project sync + read-only shares (docs/15) ----------
+function workspaceHeaders(extra = {}) { return Object.assign({}, extra, { 'X-Workspace': wsGet().id }); }
+function scheduleProjectSync(projectId) {
+  if (!SYNC_AVAILABLE) return;
+  clearTimeout(PROJECT_SYNC_TIMERS.get(projectId));
+  PROJECT_SYNC_TIMERS.set(projectId, setTimeout(() => {
+    PROJECT_SYNC_TIMERS.delete(projectId);
+    syncProject(projectId);
+  }, 2000));
+}
+async function syncProject(projectOrId) {
+  if (!SYNC_AVAILABLE) return false;
+  const project = typeof projectOrId === 'string' ? projGet(projectOrId) : projectOrId;
+  if (!project) return false;
+  const snapshot = JSON.parse(JSON.stringify(project));
+  try {
+    const response = await fetch(API + '/api/projects/' + encodeURIComponent(snapshot.id), {
+      method: 'PUT', headers: workspaceHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ project: snapshot }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.status === 409 && payload?.detail?.error === 'project_conflict') {
+      const remote = payload.detail.project;
+      projSet(remote, { touch: false, sync: false });
+      if (PROJ?.id === remote.id) { PROJ = remote; route(); }
+      toast('Проект обновлён с другого устройства; показана более свежая версия.');
+      return false;
+    }
+    if (response.status === 503 && payload?.detail?.error === 'no_db') {
+      SYNC_AVAILABLE = false;
+      return false;
+    }
+    if (!response.ok) throw new Error(payload?.detail?.message || `HTTP ${response.status}`);
+    const current = projGet(snapshot.id);
+    if (current?.updated_at === snapshot.updated_at) {
+      projSet(payload.project, { touch: false, sync: false });
+      if (PROJ?.id === snapshot.id) PROJ = payload.project;
+      return true;
+    }
+    return false;
+  } catch (error) {
+    setSave('unsaved');
+    toast('Локально сохранено; синхронизация недоступна: ' + error.message);
+    return false;
+  }
+}
+async function deleteRemoteProject(projectId) {
+  try {
+    await fetch(API + '/api/projects/' + encodeURIComponent(projectId), {
+      method: 'DELETE', headers: workspaceHeaders(),
+    });
+  } catch { /* local delete remains valid offline */ }
+}
+async function syncFromServer() {
+  if (!SYNC_AVAILABLE) return;
+  try {
+    const response = await fetch(API + '/api/projects', { headers: workspaceHeaders() });
+    if (!response.ok) return;
+    const payload = await response.json();
+    let pulled = false;
+    payload.projects.forEach(remote => {
+      const local = projGet(remote.id);
+      if (!local || (remote.updated_at || '') > (local.updated_at || '')) {
+        projSet(remote, { touch: false, sync: false });
+        pulled = pulled || Boolean(local);
+      } else if ((local.updated_at || '') > (remote.updated_at || '')) {
+        scheduleProjectSync(local.id);
+      } else if (JSON.stringify(local) !== JSON.stringify(remote)) {
+        scheduleProjectSync(local.id); // server resolves equal-version ambiguity with explicit 409
+      }
+    });
+    if (pulled) toast('Проекты обновлены с другого устройства.');
+  } catch { /* localStorage-first: startup remains usable offline */ }
+}
+async function createShareLink() {
+  if (!PROJ) return;
+  if (!SYNC_AVAILABLE) { toast('Share-ссылка требует DATABASE_URL; локальный проект сохранён.'); return; }
+  clearTimeout(PROJECT_SYNC_TIMERS.get(PROJ.id)); PROJECT_SYNC_TIMERS.delete(PROJ.id);
+  if (!await syncProject(PROJ.id)) return;
+  try {
+    const response = await fetch(API + '/api/projects/' + encodeURIComponent(PROJ.id) + '/share', {
+      method: 'POST', headers: workspaceHeaders(),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.detail?.message || `HTTP ${response.status}`);
+    const link = `${location.origin}${location.pathname}#/s/${payload.token}`;
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
+    }
+    if (!copied) prompt('Скопируйте read-only ссылку:', link);
+    toast(
+      `${copied ? 'Read-only share-ссылка скопирована' : 'Read-only share-ссылка создана'}. Любой с ссылкой может читать проект.`,
+      'Открыть',
+      () => go('/s/' + payload.token),
+    );
+  } catch (error) { toast('⚠ share-ссылка не создана: ' + error.message); }
+}
+async function renderShared(token) {
+  const body = $('sharedScheduleBody');
+  body.innerHTML = '<tr><td colspan="13" class="dim">Сервер заново пересчитывает проект…</td></tr>';
+  $('sharedTotals').innerHTML = '';
+  $('sharedSld').innerHTML = '<span class="dim">Загрузка…</span>';
+  try {
+    const response = await fetch(API + '/api/shared/' + encodeURIComponent(token));
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.detail?.message || `HTTP ${response.status}`);
+    const project = payload.project, report = payload.report;
+    $('sharedName').textContent = `${project.name} · ${project.board_ref || ''}`;
+    $('sharedMeta').textContent = `${project.location || ''} · ${project.supply.voltage_v} В · ${project.supply.phases}ф · обновлён ${project.updated_at || '—'}`;
+    body.innerHTML = report.rows.length ? report.rows.map(row => rowHTML(row, true)).join('')
+      : '<tr><td colspan="13" class="empty">В проекте нет цепей.</td></tr>';
+    renderTotals(report.board, 'sharedTotals');
+    renderSldInto(report.sld, 'sharedSld');
+    $('sharedIdentity').textContent = `${report.data_identity} ${report.provenance_note} ${report.signoff_notice} ${report.disclaimer}`;
+    topBadge(report.board.status);
+  } catch (error) {
+    body.innerHTML = `<tr><td colspan="13" style="color:var(--bad)">⚠ ${esc(error.message)}</td></tr>`;
+    $('sharedName').textContent = 'Share-ссылка недоступна';
+  }
+}
+
 // ---------- boot ----------
 window.addEventListener('hashchange', route);
 async function boot() {
   toggleSrc(); toggleCurve(); wsGet(); migrateLegacy();
   try { HEALTH = await (await fetch(API + '/api/health')).json(); $('modeTag').textContent = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; } catch { $('modeTag').textContent = 'offline'; }
   try { PACKS = await (await fetch(API + '/api/packs')).json(); } catch { PACKS = []; }
+  SYNC_AVAILABLE = HEALTH.project_store === 'neon';
+  await syncFromServer();
   if (HEALTH.mode === 'fallback') addMsg('bot', 'Ключ Gemini на сервере не задан — копилот в режиме фолбэка (NL-разбор недоступен, объяснение — шаблон, ревьюер — детерминированный). Расчёт и графики работают полностью.');
   else addMsg('bot', 'Опиши цепь словами или задай параметры — соберу расчёт с трассой до норм, интерактивные графики и проверку ревьюером.');
   route();

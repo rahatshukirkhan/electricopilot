@@ -72,8 +72,26 @@ cp .env.example .env         # затем вписать OPENROUTER_API_KEY и/�
 |---|---|
 | `OPENROUTER_API_KEY` | доступ к Gemini (OpenRouter); пусто → фолбэк |
 | `ELECTRICOPILOT_MODEL_STRONG` / `_FAST` | `google/gemini-3.1-pro-preview` / `google/gemini-3-flash-preview` |
-| `DATABASE_URL` | Neon/Postgres; пусто → JSONL в `./runs/` |
+| `DATABASE_URL` | Neon/Postgres; пусто → аудит JSONL, проекты только в localStorage |
 | `ELECTRICOPILOT_STRICT_PROVENANCE` | строгий провенанс (по умолчанию `true`) |
+
+### Neon-проекты и share-ссылки
+
+При заданном `DATABASE_URL` один раз создайте отдельные таблицы проектов и read-only ссылок:
+
+```bash
+uv sync --extra dev
+uv run python scripts/init_db.py
+```
+
+Studio по-прежнему сначала сохраняет щиты в `localStorage`, затем синхронизирует канонический
+schema v2 в фоне. Без БД API возвращает `no_db`, но локальная работа не блокируется. Кнопка
+«Share-ссылка» создаёт анонимный маршрут `#/s/<token>`: это доступ по секретной ссылке, а не
+аккаунтная авторизация; получатель видит свежий серверный пересчёт без прав изменения.
+
+`ec_v2_workspace`/`X-Workspace` только разделяет анонимные рабочие области. Не используйте эту
+модель как защиту чувствительных проектов. Подробный контракт и модель угроз —
+[`docs/15-project-persistence.md`](docs/15-project-persistence.md).
 
 ## Запуск
 
@@ -228,7 +246,8 @@ uv run mypy src          # strict
 ## Что нужно от пользователя
 
 - `OPENROUTER_API_KEY` — для живых ролей Gemini (intake/explain/verify).
-- `DATABASE_URL` (Neon) — для персистентности в Postgres (иначе JSONL).
+- `DATABASE_URL` (Neon) — для аудита расчётов и синхронизации проектов/share; без него аудит
+  деградирует в JSONL, а проекты остаются в localStorage.
 - Оба опциональны: без них проект полностью запускается и проходит тесты.
 
 ## Лицензия

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +43,13 @@ from .models import SizingRequest, SizingResult, VerificationVerdict
 from .normcheck import build_normcheck_report, narrate_findings
 from .project import build_project_report
 from .project_contract import Project, project_payload
+from .store import (
+    PostgresStore,
+    ProjectConflictError,
+    ProjectNotFoundError,
+    ProjectRecord,
+    ProjectStore,
+)
 from .viz import build_visuals
 
 app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
@@ -88,8 +95,8 @@ if _origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "X-Workspace"],
     )
 
 
@@ -105,7 +112,8 @@ def _client() -> OpenRouterClient:
 def health() -> dict[str, str]:
     cfg = get_config()
     return {"status": "ok", "mode": "live" if cfg.llm_available else "fallback",
-            "model_fast": cfg.model_fast, "model_strong": cfg.model_strong}
+            "model_fast": cfg.model_fast, "model_strong": cfg.model_strong,
+            "project_store": "neon" if cfg.db_available else "local"}
 
 
 @app.get("/api/packs")
@@ -218,6 +226,137 @@ def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[
 
 class ProjectBody(BaseModel):
     project: Project
+
+
+_PROJECT_STORE_OVERRIDE: ProjectStore | None = None
+
+
+def _project_store() -> ProjectStore:
+    if _PROJECT_STORE_OVERRIDE is not None:
+        return _PROJECT_STORE_OVERRIDE
+    cfg = get_config()
+    if not cfg.db_available:
+        raise HTTPException(
+            status_code=503,
+            detail={"ok": False, "error": "no_db", "message": "DATABASE_URL не задан."},
+        )
+    return PostgresStore(cfg.database_url)
+
+
+def _workspace(value: str | None) -> str:
+    workspace = (value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,160}", workspace):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error": "workspace_required",
+                "message": "Требуется непустой заголовок X-Workspace.",
+            },
+        )
+    return workspace
+
+
+def _stored_payload(record: ProjectRecord) -> dict[str, Any]:
+    return record.payload()
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={"ok": False, "error": "project_not_found", "message": "Проект не найден."},
+    )
+
+
+@app.get("/api/projects")
+def projects_list_endpoint(x_workspace: str | None = Header(default=None)) -> dict[str, Any]:
+    workspace = _workspace(x_workspace)
+    records = _project_store().list(workspace)
+    return {"ok": True, "projects": [_stored_payload(record) for record in records]}
+
+
+@app.get("/api/projects/{project_id}")
+def project_get_endpoint(
+    project_id: str,
+    x_workspace: str | None = Header(default=None),
+) -> dict[str, Any]:
+    workspace = _workspace(x_workspace)
+    record = _project_store().get(workspace, project_id)
+    if record is None:
+        raise _not_found()
+    return {"ok": True, "project": _stored_payload(record)}
+
+
+@app.put("/api/projects/{project_id}")
+def project_put_endpoint(
+    project_id: str,
+    body: ProjectBody,
+    x_workspace: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if project_id != body.project.id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "ok": False,
+                "error": "project_id_mismatch",
+                "message": "ID в URL не совпадает с project.id.",
+            },
+        )
+    try:
+        workspace = _workspace(x_workspace)
+        record = _project_store().put(workspace, body.project)
+    except ProjectConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "ok": False,
+                "error": "project_conflict",
+                "message": "На сервере есть более свежая версия проекта.",
+                "project": _stored_payload(exc.current),
+            },
+        ) from None
+    except ProjectNotFoundError:
+        raise _not_found() from None
+    return {"ok": True, "project": _stored_payload(record)}
+
+
+@app.delete("/api/projects/{project_id}")
+def project_delete_endpoint(
+    project_id: str,
+    x_workspace: str | None = Header(default=None),
+) -> dict[str, Any]:
+    workspace = _workspace(x_workspace)
+    if not _project_store().delete(workspace, project_id):
+        raise _not_found()
+    return {"ok": True}
+
+
+@app.post("/api/projects/{project_id}/share")
+def project_share_endpoint(
+    project_id: str,
+    x_workspace: str | None = Header(default=None),
+) -> dict[str, Any]:
+    try:
+        workspace = _workspace(x_workspace)
+        token = _project_store().share(workspace, project_id)
+    except ProjectNotFoundError:
+        raise _not_found() from None
+    return {"ok": True, "token": token}
+
+
+@app.get("/api/shared/{token}")
+def project_shared_endpoint(token: str) -> dict[str, Any]:
+    record = _project_store().get_shared(token)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"ok": False, "error": "share_not_found", "message": "Share-ссылка не найдена."},
+        )
+    project = record.project
+    report = _report_for(project)
+    if project.circuits:
+        report = {**report, "sld": _sld_preview(project, report)}
+    return {"ok": True, "project": _stored_payload(record), "report": report}
 
 
 def _report_for(project: Project) -> dict[str, Any]:
