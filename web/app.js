@@ -575,7 +575,14 @@ function download(name, data, type) { const b = data instanceof Blob ? data : ne
 function exportProject(p) { if (!p) return; download(`${(p.board_ref || p.name).replace(/\s+/g, '_')}.ecproj.json`, JSON.stringify(p, null, 2), 'application/json'); }
 function importProject(e) {
   const f = e.target.files[0]; if (!f) return; const rd = new FileReader();
-  rd.onload = () => { try { const p = JSON.parse(rd.result); const copy = deepCopyProject(p, p.name); projSet(copy); e.target.value = ''; go('/p/' + copy.id); toast('Проект импортирован'); } catch (err) { toast('⚠ не удалось прочитать файл: ' + err.message); } };
+  rd.onload = async () => {
+    try {
+      const p = JSON.parse(rd.result);
+      const validated = await postJSON('/api/project-validate', { project: p });
+      const copy = deepCopyProject(validated.project, validated.project.name);
+      projSet(copy); e.target.value = ''; go('/p/' + copy.id); toast('Проект импортирован');
+    } catch (err) { toast('⚠ не удалось импортировать файл: ' + err.message); }
+  };
   rd.readAsText(f);
 }
 async function downloadReport() {

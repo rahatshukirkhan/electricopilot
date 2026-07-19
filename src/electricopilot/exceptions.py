@@ -16,6 +16,16 @@ class ProjectTopologyError(ElectriCopilotError):
     code = "invalid_project_topology"
 
 
+class ProjectContractError(ElectriCopilotError):
+    """A versioned project payload failed canonical schema validation."""
+
+    code = "invalid_project_contract"
+
+    def __init__(self, *, path: str, message: str) -> None:
+        self.path = path
+        super().__init__(f"Некорректный проект ({path or 'project'}): {message}")
+
+
 class LlmConfigError(ElectriCopilotError):
     """LLM is misconfigured: no API key in live mode, or an unknown model slug (D10)."""
 

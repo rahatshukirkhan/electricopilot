@@ -1,12 +1,11 @@
 """Deterministic normcheck runner and stable result projection (docs/14)."""
 from __future__ import annotations
 
-from typing import Any
-
 from ..data.loader import DataPack
 from ..engine import size
 from ..models import DISCLAIMER, SizingRequest, provenance_note_for
 from ..project import build_project_report
+from ..project_contract import ProjectInput, project_payload, validate_project
 from .models import (
     BoardContext,
     CircuitContext,
@@ -20,11 +19,13 @@ from .rules import RULES, RuleSpec
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
 
-def _context(project: dict[str, Any], pack: DataPack) -> BoardContext:
-    report = build_project_report(project, data_pack=pack)
+def _context(project: ProjectInput, pack: DataPack) -> BoardContext:
+    canonical = validate_project(project)
+    payload = project_payload(canonical)
+    report = build_project_report(canonical, data_pack=pack)
     rows = {str(row.get("id") or ""): row for row in report["rows"]}
     circuits: list[CircuitContext] = []
-    for raw in project.get("circuits", []):
+    for raw in payload["circuits"]:
         request = SizingRequest.model_validate(raw["request"])
         result = size(request, data_pack=pack)
         circuit_id = str(raw.get("id") or "")
@@ -34,7 +35,7 @@ def _context(project: dict[str, Any], pack: DataPack) -> BoardContext:
             result=result,
             row=rows[circuit_id],
         ))
-    return BoardContext(project=project, pack=pack, report=report, circuits=tuple(circuits))
+    return BoardContext(project=payload, pack=pack, report=report, circuits=tuple(circuits))
 
 
 def _source(pack: DataPack, spec: RuleSpec) -> RuleSource | None:
@@ -112,7 +113,7 @@ def _sort_key(finding: Finding) -> tuple[int, str, str, str]:
     )
 
 
-def run_normcheck(project: dict[str, Any], pack: DataPack) -> list[Finding]:
+def run_normcheck(project: ProjectInput, pack: DataPack) -> list[Finding]:
     """Run R01-R10 over fresh server-side calculations and return stable findings."""
     ctx = _context(project, pack)
     findings: list[Finding] = []
@@ -141,8 +142,8 @@ def summarize_findings(findings: list[Finding]) -> NormcheckSummary:
     return NormcheckSummary.model_validate(values)
 
 
-def build_normcheck_report(project: dict[str, Any], pack: DataPack) -> NormcheckReport:
-    findings = run_normcheck(project, pack)
+def build_normcheck_report(project: ProjectInput, pack: DataPack) -> NormcheckReport:
+    findings = run_normcheck(validate_project(project), pack)
     provenance = pack.assess_provenance(
         sorted({
             section

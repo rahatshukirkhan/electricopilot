@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from electricopilot.data.loader import DataPack, load_data_pack
+from electricopilot.exceptions import ProjectContractError
 from electricopilot.normcheck import (
     RULES,
     Finding,
@@ -79,6 +80,7 @@ def _circuit(
 
 def _project(*circuits: dict[str, Any], ways_total: int = 12) -> dict[str, Any]:
     return {
+        "id": "project-normcheck",
         "name": "Normcheck fixture",
         "board_ref": "NC-1",
         "supply": {"voltage_v": 400, "phases": 3, "ways_total": ways_total},
@@ -114,11 +116,11 @@ def test_r02_socket_rcd_positive_negative_and_stale_result_ignored(
     assert _violations(_project(_circuit(purpose="socket", rcd=True)), verified_pack, "R02") == []
 
 
-def test_r02_invalid_rcd_setting_is_not_checked(verified_pack: DataPack) -> None:
+def test_invalid_rcd_type_is_rejected_by_project_contract(verified_pack: DataPack) -> None:
     project = _project(_circuit(purpose="socket", rcd=True))
     project["circuits"][0]["meta"]["rcd"]["ma"] = "not-a-number"
-    finding = _for(run_normcheck(project, verified_pack), "R02")[0]
-    assert finding.status == "not_checked" and finding.reason == "invalid_input"
+    with pytest.raises(ProjectContractError, match="circuits.0.meta.rcd.ma"):
+        run_normcheck(project, verified_pack)
 
 
 def test_r03_cumulative_voltage_drop_positive_and_negative(verified_pack: DataPack) -> None:
@@ -288,19 +290,18 @@ def test_summary_counts_violations_separately_from_not_checked(verified_pack: Da
     assert report.summary.total == len(report.findings)
 
 
-def test_invalid_optional_board_inputs_are_not_checked_not_server_errors(
-    verified_pack: DataPack,
-) -> None:
+def test_invalid_optional_board_inputs_return_typed_api_error() -> None:
     project = _project(_circuit(pe_section_mm2=None))
     project["circuits"][0]["meta"]["pe_section_mm2"] = "not-a-number"
     project["supply"]["feeder"] = {
         "length_m": 10, "section_mm2": 0, "material": "Cu",
     }
     project["supply"]["incomer"] = {"In_a": "not-a-number"}
-    findings = run_normcheck(project, verified_pack)
-    assert _for(findings, "R03")[0].status == "not_checked"
-    assert _for(findings, "R04")[0].reason == "invalid_input"
-    assert _for(findings, "R10")[0].reason == "invalid_input"
+    response = TestClient(app).post("/api/normcheck", json={"project": project})
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_project_contract"
+    assert detail["path"].startswith("project.")
 
 
 def test_api_available_without_llm_key(monkeypatch: Any) -> None:

@@ -11,10 +11,11 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from typing import Any, Optional
+from typing import Optional
 
 from ..data.loader import DataPack, load_data_pack
 from ..project import build_project_report
+from ..project_contract import ProjectInput, project_payload, validate_project
 from .boq import build_boq
 from .cable_journal import build_cable_journal
 from .dxf import render_dxf
@@ -25,16 +26,18 @@ from .xlsx import render_table_xlsx
 _FIXED_DATE = (2020, 1, 1, 0, 0, 0)  # reproducible zip entries (no wall-clock)
 
 
-def build_bundle(project: dict[str, Any], *, data_pack: Optional[DataPack] = None) -> bytes:
-    pack = data_pack or load_data_pack(project.get("norm_pack"))
-    report = build_project_report(project, data_pack=pack)
-    sheets = build_sld(project, report)
+def build_bundle(project: ProjectInput, *, data_pack: Optional[DataPack] = None) -> bytes:
+    canonical = validate_project(project)
+    payload = project_payload(canonical)
+    pack = data_pack or load_data_pack(canonical.norm_pack)
+    report = build_project_report(canonical, data_pack=pack)
+    sheets = build_sld(canonical, report)
 
     files: dict[str, bytes] = {
         "report.md": report["markdown"].encode("utf-8"),
-        "cable_journal.xlsx": render_table_xlsx(build_cable_journal(project, report)),
-        "boq.xlsx": render_table_xlsx(build_boq(project, report)),
-        "project.json": json.dumps(project, ensure_ascii=False, indent=2).encode("utf-8"),
+        "cable_journal.xlsx": render_table_xlsx(build_cable_journal(canonical, report)),
+        "boq.xlsx": render_table_xlsx(build_boq(canonical, report)),
+        "project.json": json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
     }
     for i, sheet in enumerate(sheets):
         suffix = "" if i == 0 else f"-{i + 1}"

@@ -7,7 +7,7 @@ from copy import deepcopy
 import pytest
 from fastapi.testclient import TestClient
 
-from electricopilot.exceptions import ProjectTopologyError
+from electricopilot.exceptions import ProjectContractError, ProjectTopologyError
 from electricopilot.project import build_project_report
 from electricopilot.studio_api import app
 
@@ -25,7 +25,8 @@ def _c(cid, ref, phase, **req_over):
 
 
 PROJECT = {
-    "name": "Щит", "board_ref": "DB-1", "supply": {"voltage_v": 400, "ways_total": 12},
+    "id": "project-main", "name": "Щит", "board_ref": "DB-1",
+    "supply": {"voltage_v": 400, "ways_total": 12},
     "diversity": {"factors": {"socket": 0.5, "motor": 1.0}},
     "circuits": [
         _c("c1", "L1", "L1"),
@@ -65,6 +66,7 @@ def test_totals_and_ways():
 
 def _one_phase_project() -> dict:
     return {
+        "id": "project-one-phase",
         "name": "1ф щит",
         "board_ref": "DB-1F",
         "supply": {"voltage_v": 230, "phases": 1, "ways_total": 6},
@@ -138,7 +140,7 @@ def test_invalid_topology_is_rejected_before_partial_calculation():
     invalid_projects.append(wrong_three_phase_voltage)
 
     for project in invalid_projects:
-        with pytest.raises(ProjectTopologyError):
+        with pytest.raises((ProjectContractError, ProjectTopologyError)):
             build_project_report(project)
 
 
