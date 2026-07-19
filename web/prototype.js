@@ -159,28 +159,100 @@ function renderNorm() {
 }
 function runNormcheck() {
   STATE.checked = true;
-  renderBoardCard(); renderTable(); renderNorm(); renderNextStep();
+  renderBoardCard(); renderTable(); renderNorm(); renderNextStep(); renderSldBoard();
   toast(`Нормоконтроль выполнен (мок): ${FINDINGS.length} замечания`);
 }
-function renderSldBoard() {
-  const nodes = [{ label: 'Ввод', sub: `${SUPPLY.voltage_v} В · ${SUPPLY.phases}ф` }, { label: 'ВРУ-1', sub: 'DB-1' }]
-    .concat(CIRCUITS.map(c => ({ label: c.ref, sub: deviceStr(c) })));
-  $('pSld').innerHTML = sldSvg(nodes, 'PASS', 'координация по перегрузке');
+// ---------- single-line diagram (docs/19): classic panel schedule, passport columns ----------
+// Colors are the resolved Blueprint Light token values (SVG presentation attributes can't take var()).
+const SLD = { PAD: 24, COL: 190, PASS_W: 170, busY: 68, dropBottom: 198, brkTop: 82, rcdTop: 126,
+  pTop: 210, rowH: 17, titleH: 20,
+  C: { line: '#0F1B33', bus: '#1E40AF', div: '#DBEAFE', frame: '#BFD3F2', dim: '#42557A', ok: '#15803D', warn: '#B45309', bad: '#DC2626' } };
+
+function passportDevice(c) { return c.device === 'gG_fuse' ? `Пред. gG ${fmt(c.In, 0)} A` : `${c.device} ${fmt(c.In, 0)} A · хар. ${c.curve}`; }
+function passportRcd(c) { return c.rcd.present ? `УЗО ${c.rcd.type} ${c.rcd.ma} мА` : 'УЗО —'; }
+function passportCable(c) { return `${c.ph === 3 ? '3P+N' : '1P+N'} ${fmt(c.section)} мм² ${c.material}/${c.insulation} · мет. ${c.method}`; }
+function passportStatus(c) {
+  const flagged = STATE.checked && FINDINGS.some(f => f.circuit === c.id);
+  if (flagged) return { color: SLD.C.warn, code: 'NEEDS_REVIEW', text: 'требует проверки' };
+  if (c.status === 'FAIL') return { color: SLD.C.bad, code: 'FAIL', text: 'не проходит' };
+  if (c.status === 'NEEDS_REVIEW') return { color: SLD.C.warn, code: 'NEEDS_REVIEW', text: 'требует проверки' };
+  return null; // тихая норма — маркер не показываем
 }
-function sldSvg(nodes, status, govText) {
-  const col = { PASS: '#15803D', FAIL: '#DC2626', NEEDS_REVIEW: '#B45309' }[status] || '#5B6B8C';
-  const bw = 132, gap = 40, y = 60, h = 72; let x = 20;
-  let svg = `<svg viewBox="0 0 ${20 + (bw + gap) * nodes.length} 180" style="max-width:100%">`;
-  nodes.forEach((n, i) => {
-    if (i > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#1E40AF" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#FFFFFF" stroke="${i === nodes.length - 1 ? col : '#BFD3F2'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="13" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 50}" fill="#42557A" font-size="11" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
-    x += bw + gap;
+function sldText(x, y, str, o = {}) {
+  const fam = o.mono ? "'Fira Code',monospace" : "'Fira Sans',sans-serif";
+  const t = o.title ? `<title>${esc(o.title)}</title>` : '';
+  return `<text x="${x}" y="${y}" font-family="${fam}" font-size="${o.size || 10.5}" font-weight="${o.weight || 400}" fill="${o.color || SLD.C.line}" text-anchor="${o.anchor || 'start'}">${t}${esc(str)}</text>`;
+}
+function sldSym(kind, x, yTop) {
+  const C = SLD.C, w = 22, h = 34, lx = x - w / 2;
+  if (kind === 'breaker') return `<rect x="${lx}" y="${yTop}" width="${w}" height="${h}" rx="2" fill="#FFFFFF" stroke="${C.line}" stroke-width="1.6"/>`
+    + `<line x1="${x - 6}" y1="${yTop + h - 6}" x2="${x + 7}" y2="${yTop + 7}" stroke="${C.line}" stroke-width="1.6"/>`
+    + `<circle cx="${x - 6}" cy="${yTop + h - 6}" r="1.7" fill="${C.line}"/>`;
+  if (kind === 'fuse') return `<rect x="${lx}" y="${yTop}" width="${w}" height="${h}" rx="2" fill="#FFFFFF" stroke="${C.line}" stroke-width="1.6"/>`
+    + `<line x1="${x}" y1="${yTop + 3}" x2="${x}" y2="${yTop + h - 3}" stroke="${C.line}" stroke-width="1.6"/>`;
+  if (kind === 'rcd') { const rh = 18; return `<rect x="${x - 13}" y="${yTop}" width="26" height="${rh}" rx="2" fill="#FFFFFF" stroke="${C.line}" stroke-width="1.6"/>`
+    + `<line x1="${x - 8}" y1="${yTop + rh - 4}" x2="${x + 8}" y2="${yTop + 4}" stroke="${C.line}" stroke-width="1.4"/>`
+    + `<circle cx="${x + 5}" cy="${yTop + rh - 5}" r="2.2" fill="none" stroke="${C.line}" stroke-width="1.2"/>`; }
+  if (kind === 'arrow') return `<path d="M${x - 5} ${yTop} L${x + 5} ${yTop} L${x} ${yTop + 8} Z" fill="${C.line}"/>`;
+  return '';
+}
+function sldPassport(c, i, fx) {
+  const C = SLD.C, px = SLD.PAD + i * SLD.COL, pw = SLD.PASS_W, top = SLD.pTop, rh = SLD.rowH, th = SLD.titleH;
+  const bodyH = th + 6 * rh;
+  let out = `<rect x="${px}" y="${top}" width="${pw}" height="${bodyH}" fill="none" stroke="${C.div}" stroke-width="1"/>`;
+  out += sldText(px + 8, top + 14, `${c.ref} · ${c.desc}`, { size: 11.5, weight: 700 });
+  const line = (n) => `<line x1="${px}" y1="${top + th + n * rh}" x2="${px + pw}" y2="${top + th + n * rh}" stroke="${C.div}" stroke-width="1"/>`;
+  for (let n = 0; n <= 6; n++) out += line(n);
+  const rowY = (n) => top + th + n * rh + 12; // baseline of data row n (0-based)
+  out += sldText(px + 8, rowY(0), passportDevice(c), { size: 10.5, mono: true, title: c.device });
+  out += sldText(px + 8, rowY(1), passportRcd(c), { size: 10.5, mono: true });
+  out += sldText(px + 8, rowY(2), passportCable(c), { size: 9.5, mono: true });
+  out += sldText(px + 8, rowY(3), `L = ${fmt(c.length, 0)} м · IB = ${fmt(c.IB, 1)} А`, { size: 10.5, mono: true, color: C.dim });
+  out += sldText(px + 8, rowY(4), `ΔU = ${fmt(c.vd)} % (из ${fmt(c.vdlimit, 0)})`, { size: 10.5, mono: true, color: C.dim });
+  const st = passportStatus(c);
+  if (st) {
+    out += `<circle cx="${px + 12}" cy="${rowY(5) - 3}" r="4" fill="${st.color}"><title>${esc(st.code)}</title></circle>`;
+    out += sldText(px + 22, rowY(5), st.text, { size: 10.5, weight: 600, color: st.color, title: st.code });
+  }
+  return out;
+}
+function schematicSvg() {
+  const N = CIRCUITS.length, C = SLD.C, P = SLD.PAD;
+  const W = P + N * SLD.COL + P;
+  const feederX = (i) => P + i * SLD.COL + SLD.PASS_W / 2;
+  const pBottom = SLD.pTop + SLD.titleH + 6 * SLD.rowH;
+  const stampW = 236, stampH = 58, stampY = pBottom + 20, stampX = W - P - stampW;
+  const H = stampY + stampH + P;
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="max-width:100%;height:auto">`;
+  s += `<rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#FFFFFF" stroke="${C.frame}" stroke-width="1"/>`;
+  // incomer (top-left): drop line + breaker symbol + horizontal labels
+  const inX = P + 14;
+  s += `<line x1="${inX}" y1="16" x2="${inX}" y2="${SLD.busY}" stroke="${C.line}" stroke-width="1.6"/>`;
+  s += `<rect x="${inX - 9}" y="24" width="18" height="22" rx="2" fill="#FFFFFF" stroke="${C.line}" stroke-width="1.6"/>`;
+  s += `<line x1="${inX - 5}" y1="42" x2="${inX + 6}" y2="28" stroke="${C.line}" stroke-width="1.6"/>`;
+  s += sldText(inX + 18, 30, `Ввод · ${SUPPLY.voltage_v} В · ${SUPPLY.phases}ф · ${SUPPLY.earthing}`, { size: 11, weight: 600 });
+  s += sldText(inX + 18, 44, `Iрасч ≈ ${SUPPLY.incomer_a} А`, { size: 10.5, mono: true, color: C.dim });
+  // bus bar
+  s += `<line x1="${inX}" y1="${SLD.busY}" x2="${feederX(N - 1) + 24}" y2="${SLD.busY}" stroke="${C.bus}" stroke-width="4" stroke-linecap="round"/>`;
+  // feeders
+  CIRCUITS.forEach((c, i) => {
+    const fx = feederX(i);
+    s += sldText(fx, 60, c.ref, { anchor: 'middle', size: 11, weight: 600 });
+    s += `<line x1="${fx}" y1="${SLD.busY}" x2="${fx}" y2="${SLD.dropBottom}" stroke="${C.line}" stroke-width="1.6"/>`;
+    s += sldSym(c.device === 'gG_fuse' ? 'fuse' : 'breaker', fx, SLD.brkTop);
+    if (c.rcd.present) s += sldSym('rcd', fx, SLD.rcdTop);
+    s += sldSym('arrow', fx, SLD.dropBottom - 8);
+    s += sldPassport(c, i, fx);
   });
-  svg += `<text x="20" y="28" fill="${col}" font-size="14" font-weight="700">${esc(stLabel(status))} · определяет: ${esc(govText)}</text></svg>`;
-  return svg;
+  // title block (stamp), bottom-right
+  s += `<rect x="${stampX}" y="${stampY}" width="${stampW}" height="${stampH}" fill="#FFFFFF" stroke="${C.frame}" stroke-width="1"/>`;
+  s += sldText(stampX + 10, stampY + 18, 'Щит ВРУ-1 (пример) · DB-1', { size: 11, weight: 600 });
+  s += sldText(stampX + 10, stampY + 34, 'Однолинейная схема · лист 1/1', { size: 10, color: C.dim });
+  s += sldText(stampX + 10, stampY + 50, 'рекомендательно · не сертификация', { size: 9.5, color: C.dim });
+  s += `</svg>`;
+  return s;
 }
+function renderSldBoard() { $('pSld').innerHTML = schematicSvg(); }
 
 // ========================= CIRCUIT =========================
 function activeCircuit() { return byId(STATE.activeId); }
@@ -279,7 +351,7 @@ function drawCharts(c) {
   ['tcc', 'sweep', 'vd', 'derating', 'sld'].forEach(t => { const el = $('pPlot_' + t); el.innerHTML = ''; el.style.height = ''; });
   if (c.id !== 'L1') {
     ['tcc', 'sweep', 'vd', 'derating'].forEach(t => stubPane($('pPlot_' + t), 'В прототипе доступна цепь L1'));
-    $('pPlot_sld').innerHTML = sldSvg([{ label: 'ВРУ-1', sub: 'DB-1' }, { label: c.ref, sub: deviceStr(c) }], c.status, govLabel(c.governing));
+    $('pPlot_sld').innerHTML = schematicSvg();
     return;
   }
   drawL1Charts();
@@ -301,7 +373,7 @@ function drawL1Charts() {
   Plotly.react('pPlot_derating', [{ x: ['Табл. It', '· ka (t°)', '· kg (групп.)', 'IZ'], y: [24, 22, r.IZ, r.IZ], type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#3B82F6', '#15803D'] }, text: ['24', '22', fmt(r.IZ, 0), fmt(r.IZ, 0)], textposition: 'outside' }],
     Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(r.IB, 1)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: r.IB, y1: r.IB, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
   // sld
-  $('pPlot_sld').innerHTML = sldSvg([{ label: 'ВРУ-1', sub: 'DB-1' }, { label: 'L1', sub: deviceStr(byId('L1')) }], r.status, govLabel(r.governing));
+  $('pPlot_sld').innerHTML = schematicSvg();
 }
 function drawVD(f, r) {
   const K = f.ph === 3 ? 0.00848 : 0.01864;
