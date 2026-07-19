@@ -9,6 +9,26 @@ const nowISO = () => new Date().toISOString();
 const uid = (p) => p + '_' + (crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(16).slice(2, 10));
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+// ---------- display dictionary (docs/17): Russian labels for the electrician, technical code kept in title ----------
+// Display layer only — enum values in API/localStorage/exports/`value=` are never changed.
+const ST_LABELS = { PASS: 'Соответствует', FAIL: 'Не проходит', NEEDS_REVIEW: 'Требует проверки', UNSIGNED_ADVISORY: 'Не подписано · рекомендательно', SIGNED: 'Подписано', 'READ-ONLY': 'Только просмотр' };
+const GOV_LABELS = { overload_coordination: 'координация по перегрузке', short_circuit: 'термическая стойкость к КЗ', voltage_drop: 'падение напряжения' };
+const PACK_LABELS = { 'iec-stub': 'IEC 60364 (демо-данные)', 'pue-rk': 'ПУЭ РК (adilet)' };
+const SEV_LABELS = { error: 'ошибка', warning: 'предупреждение', info: 'инфо' };            // normcheck severity
+const DIFF_LABELS = { match: 'совпадает', violation: 'нарушение', not_checked: 'не проверено' }; // import-diff status
+const SECTION_LABELS = { standard_ratings: 'номинальные ряды аппаратов', standard_sections: 'стандартные сечения', device_parameters: 'параметры аппаратов', overload_rule: 'правило перегрузки', ampacity: 'пропускная способность', ambient_correction: 'поправка на температуру', grouping_correction: 'поправка на группировку', adiabatic_k: 'коэффициент адиабаты k', resistivity: 'удельные сопротивления', reactance: 'реактансы', voltage_drop_limit: 'предел ΔU' };
+const stLabel = (s) => ST_LABELS[s] ?? (s ?? '');            // unknown code shown as-is
+const govLabel = (g) => GOV_LABELS[g] ?? (g ?? '');           // unknown code shown as-is
+const packLabel = (p) => PACK_LABELS[p] ?? (p ?? '');
+const sevLabel = (s) => SEV_LABELS[s] ?? (s ?? '');
+const diffLabel = (s) => DIFF_LABELS[s] ?? (s ?? '');
+// Schedule/SLD device strings arrive from the engine (e.g. "MCB 16A C", "gG_fuse 20A"): MCB/MCCB is
+// engineering notation and stays; only the snake_case gG_fuse token is humanized (docs/17 §4).
+const deviceText = (s) => String(s ?? '').replace(/gG_fuse/g, 'Предохранитель gG');
+// Provenance/disclaimer strings are server-generated Russian prose that lists untrusted sections by
+// their snake_case code — translate just those codes for display (server text is not otherwise rewritten).
+const humanizeSections = (t) => String(t ?? '').replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance)\b/g, (m) => SECTION_LABELS[m] || m);
+
 // ---------- storage ----------
 const K_WS = 'ec_v2_workspace', K_IDX = 'ec_v2_projects', KP = id => 'ec_v2_project_' + id;
 function jget(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } }
@@ -118,7 +138,7 @@ function route() {
   if (ms) {
     PROJ = null;
     show('shared');
-    crumbs([['Проекты', '#/'], ['Read-only share', '']]);
+    crumbs([['Проекты', '#/'], ['Только просмотр', '']]);
     topBadge('');
     setSave(''); $('saveState').textContent = 'только чтение';
     renderShared(ms[1]);
@@ -142,7 +162,7 @@ function show(s) { $('screen-' + s).hidden = false; }
 function crumbs(items) { $('crumbs').innerHTML = items.map((it, i) => i < items.length - 1 ? `<a data-h="${it[1]}">${esc(it[0])}</a> ›` : `<span>${esc(it[0])}</span>`).join(' '); }
 $('crumbs').addEventListener('click', e => { const h = e.target.dataset.h; if (h) go(h.replace(/^#/, '')); });
 $('homeLink').addEventListener('click', () => go('/'));
-function topBadge(s) { const b = $('statusBadge'); b.textContent = s || '—'; b.className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[s] || ''); }
+function topBadge(s) { const b = $('statusBadge'); b.textContent = s ? stLabel(s) : '—'; b.title = s || ''; b.className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[s] || ''); }
 
 // ========================= DASHBOARD =========================
 function renderDashboard(filter) {
@@ -154,10 +174,10 @@ function renderDashboard(filter) {
   }
   grid.innerHTML = idx.map(p => {
     const r = p.rollup?.counts || { PASS: 0, FAIL: 0, NEEDS_REVIEW: 0 };
-    const chip = (n, cls, lab) => `<span class="chip ${n ? cls : 'n'}">${n} ${lab}</span>`;
+    const chip = (n, cls, lab, code) => `<span class="chip ${n ? cls : 'n'}"${code ? ` title="${esc(code)}"` : ''}>${n} ${esc(lab)}</span>`;
     return `<div class="card" data-open="${p.id}">
       <h3>${esc(p.name)} <span class="cref">${esc(p.board_ref || '')}</span></h3>
-      <div class="chips">${chip(p.count || 0, 'n', 'цепей')}${chip(r.PASS, 'pass', 'PASS')}${chip(r.NEEDS_REVIEW, 'review', 'REVIEW')}${chip(r.FAIL, 'fail', 'FAIL')}</div>
+      <div class="chips">${chip(p.count || 0, 'n', 'цепей')}${chip(r.PASS, 'pass', 'соответствуют', 'PASS')}${chip(r.NEEDS_REVIEW, 'review', 'требует проверки', 'NEEDS_REVIEW')}${chip(r.FAIL, 'fail', 'не проходят', 'FAIL')}</div>
       <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div>
       <div class="cact">
         <button data-open="${p.id}">Открыть</button>
@@ -273,10 +293,10 @@ function renderScheduleImport() {
   $('importPreview').innerHTML = `<table><thead><tr>${previewHead}</tr></thead><tbody>${previewRows}</tbody></table>`;
 
   $('importDiff').innerHTML = result.diff.rows.map(row => {
-    const checks = row.checks.map(check => `${esc(check.field)}: ${fmt(check.observed)} → ${fmt(check.required)} (${esc(check.status)}${check.reason ? `, ${esc(check.reason)}` : ''})`).join('<br>');
-    return `<div class="import-diff-row ${row.status}"><b>${esc(row.circuit_ref)}</b><span class="mono">${checks}</span><span class="chip ${row.status === 'match' ? 'pass' : (row.status === 'violation' ? 'fail' : 'review')}">${esc(row.status)}</span></div>`;
+    const checks = row.checks.map(check => `${esc(check.field)}: ${fmt(check.observed)} → ${fmt(check.required)} (${esc(diffLabel(check.status))}${check.reason ? `, ${esc(check.reason)}` : ''})`).join('<br>');
+    return `<div class="import-diff-row ${row.status}"><b>${esc(row.circuit_ref)}</b><span class="mono">${checks}</span><span class="chip ${row.status === 'match' ? 'pass' : (row.status === 'violation' ? 'fail' : 'review')}" title="${esc(row.status)}">${esc(diffLabel(row.status))}</span></div>`;
   }).join('');
-  $('importIdentity').textContent = `${result.diff.data_identity} ${result.diff.signoff_notice} ${result.diff.disclaimer}`;
+  $('importIdentity').textContent = humanizeSections(`${result.diff.data_identity} ${result.diff.signoff_notice} ${result.diff.disclaimer}`);
   $('importConfirm').checked = Boolean(result.assumptions_confirmed);
   $('btnImportCreate').disabled = !$('importConfirm').checked;
 }
@@ -291,9 +311,9 @@ async function createImportedProject() {
     const projectId = validated.project.id;
     closeScheduleImport();
     go('/p/' + projectId);
-    toast('Щит создан после проверки mapping и assumptions');
+    toast('Щит создан после проверки сопоставления и допущений');
   } catch (error) {
-    toast('проект не прошёл каноническую проверку: ' + error.message);
+    toast('проект не прошёл контрольный пересчёт: ' + error.message);
   }
 }
 
@@ -319,14 +339,14 @@ async function renderProject() {
   body.innerHTML = rep.rows.map(r => rowHTML(r)).join('');
   const b = rep.board;
   topBadge(b.status);
-  $('boardRollup').textContent = `щит: ${b.status}`; $('boardRollup').className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[b.status] || '');
+  $('boardRollup').textContent = `щит: ${stLabel(b.status)}`; $('boardRollup').title = b.status; $('boardRollup').className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[b.status] || '');
   renderTotals(b);
   renderSldInto(rep.sld);
 }
 function renderPackSelect() {
   const sel = $('b_pack');
   const cur = PROJ.norm_pack || PACKS[0]?.name || '';
-  sel.innerHTML = PACKS.map(pk => `<option value="${esc(pk.name)}">${esc(pk.name)} (${esc(pk.version)})</option>`).join('');
+  sel.innerHTML = PACKS.map(pk => `<option value="${esc(pk.name)}" title="${esc(pk.name)}">${esc(packLabel(pk.name))} (${esc(pk.version)})</option>`).join('');
   sel.value = cur;
   packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur));
 }
@@ -335,9 +355,9 @@ function rowHTML(r, readOnly = false) {
   const sign = r.signoff === 'SIGNED' ? '<svg class="icon icon-sm" viewBox="0 0 24 24" aria-label="подписано" title="подписано"><path d="M20 6 9 17l-5-5"/></svg>' : '';
   return `<tr data-cid="${r.id}">
     <td class="mono">${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${fmt(r.pf)}</td>
-    <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td>
+    <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td title="${esc(r.device)}">${esc(deviceText(r.device))}</td><td>${esc(r.rcd)}</td>
     <td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td>
-    <td class="st-cell ${r.status}">${r.status}${sign}</td>${readOnly ? '' : `
+    <td class="st-cell ${r.status}" title="${esc(r.status)}">${esc(stLabel(r.status))}${sign}</td>${readOnly ? '' : `
     <td><div class="rowact">
       <button data-edit="${r.id}" title="Править" aria-label="Править цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
       <button data-dupc="${r.id}" title="Дублировать" aria-label="Дублировать цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
@@ -416,7 +436,7 @@ function applyNormMarkers(findings) {
     tr.classList.add('norm-' + level);
     const marker = document.createElement('span'); marker.className = 'norm-marker ' + level;
     marker.textContent = level === 'review' ? '?' : '!';
-    marker.title = level === 'review' ? 'Есть непроверенные правила' : `Finding: ${level}`;
+    marker.title = level === 'review' ? 'Есть непроверенные правила' : `Замечание: ${sevLabel(level)}`;
     tr.querySelector('td')?.appendChild(marker);
   });
 }
@@ -426,16 +446,16 @@ function renderNormcheck(rep) {
   $('normSummary').textContent = `${s.errors} ошибок · ${s.warnings} предупреждений · ${s.infos} инфо · ${s.not_checked} не проверено`;
   $('normFindings').innerHTML = rep.findings.length ? rep.findings.map(f => {
     const unchecked = f.status === 'not_checked';
-    const label = unchecked ? 'НЕ ПРОВЕРЕНО' : f.severity.toUpperCase();
+    const label = unchecked ? 'не проверено' : sevLabel(f.severity);
     const open = f.circuit_id ? `<button class="ghost norm-open" data-norm-cid="${esc(f.circuit_id)}">${esc(f.circuit_ref || 'цепь')} →</button>` : '';
     return `<article class="norm-card ${esc(f.severity)} ${unchecked ? 'not-checked' : ''}">
-      <span class="norm-sev">${label}</span>
+      <span class="norm-sev" title="${esc(unchecked ? 'not_checked' : f.severity)}">${esc(label)}</span>
       <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
         <div class="norm-values">observed: ${esc(JSON.stringify(f.observed))}<br>required: ${esc(JSON.stringify(f.required))}</div>
         <div class="norm-cite">${esc(citeText(f.citation))} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
       </div>${open}</article>`;
   }).join('') : '<span class="dim">Нарушений и непроверенных правил не найдено.</span>';
-  $('normIdentity').textContent = `${rep.data_identity} ${rep.provenance_note} ${rep.signoff_notice} ${rep.disclaimer}`;
+  $('normIdentity').textContent = humanizeSections(`${rep.data_identity} ${rep.provenance_note} ${rep.signoff_notice} ${rep.disclaimer}`);
   applyNormMarkers(rep.findings);
 }
 async function loadNormcheck() {
@@ -489,20 +509,20 @@ async function renderPrint() {
   catch (e) { root.innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; return; }
   const sld = rep.sld || { svg: '' };
   const b = rep.board, t = b.totals, sp = PROJ.supply || {};
-  const rows = rep.rows.map(r => `<tr><td>${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td><td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td><td>${esc(r.status)}</td></tr>`).join('');
+  const rows = rep.rows.map(r => `<tr><td>${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(deviceText(r.device))}</td><td>${esc(r.rcd)}</td><td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td><td>${esc(stLabel(r.status))}</td></tr>`).join('');
   root.innerHTML = `
     <div class="print-actions no-print"><button id="doPrint" class="primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать / Сохранить PDF</button> <button id="printBack" class="ghost">← Назад к щиту</button></div>
     <h1 class="ptitle">${esc(PROJ.name)} <small>${esc(PROJ.board_ref || '')}</small></h1>
     <p class="pmeta">Питание: ${esc(sp.voltage_v || 400)} В · ${esc(sp.phases || 3)}ф · ${esc(sp.earthing || 'TN-C-S')} · мест ${b.ways.used}/${b.ways.total}</p>
-    <p class="pnote">${esc(rep.data_identity || '')}</p>
+    <p class="pnote">${esc(humanizeSections(rep.data_identity || ''))}</p>
     <h2>Таблица щита (panel schedule)</h2>
     <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Итоги щита</h2>
     <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' — выше нормы' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
     <h2>Однолинейная схема</h2>
     <div class="print-sld">${sld.svg || ''}</div>
-    <p class="pnote">${esc(rep.provenance_note || '')}</p>
-    <p class="pnote"><b>${esc(rep.signoff_notice || 'UNSIGNED_ADVISORY')}</b></p>
+    <p class="pnote">${esc(humanizeSections(rep.provenance_note || ''))}</p>
+    <p class="pnote"><b>${esc(rep.signoff_notice || stLabel('UNSIGNED_ADVISORY'))}</b></p>
     <p class="pnote"><b>${esc(rep.disclaimer || '')}</b></p>`;
   $('doPrint').addEventListener('click', () => window.print());
   $('printBack').addEventListener('click', () => go('/p/' + PROJ.id));
@@ -532,7 +552,8 @@ function openEditor(cid) {
 }
 function setSignoffBadge(so) {
   const el = $('edSignoff'); const signed = so?.status === 'SIGNED';
-  el.textContent = signed ? `ПОДПИСАНО: ${so.engineer_name || ''}` : 'UNSIGNED_ADVISORY';
+  el.textContent = signed ? `${stLabel('SIGNED')}: ${so.engineer_name || ''}` : stLabel('UNSIGNED_ADVISORY');
+  el.title = signed ? 'SIGNED' : 'UNSIGNED_ADVISORY';
   el.className = 'badge small ' + (signed ? 'pass' : 'review');
 }
 function curCircuit() { return PROJ.circuits.find(x => x.id === CID); }
@@ -577,13 +598,13 @@ async function recompute() {
 function renderAll() {
   const r = VIZ.result; topBadge(r.overall_status);
   renderSummary(r); renderTCC(VIZ.tcc); renderSweep(VIZ.sweep); renderVD(VIZ.vd_profile); renderDerating(VIZ.derating); renderSLD(VIZ.sld); renderTrace(r);
-  const packNote = VIZ.data_provenance_note ? ('' + VIZ.data_provenance_note) : `Норм-пакет «${r.data_pack.name}» (${r.data_pack.status}).`;
+  const packNote = VIZ.data_provenance_note ? humanizeSections(VIZ.data_provenance_note) : `Норм-пакет «${packLabel(r.data_pack.name)}» (${r.data_pack.status}).`;
   $('provenance').textContent = packNote + ' Не данные производителя оборудования.';
   relayoutActive();
 }
 function renderSummary(r) {
   const c = r.selected_cable, p = r.selected_protection;
-  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${p.device_class} ${fmt(p.In_a)} A`], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Связывает', c.governing_constraint]].map(([k, v]) => `<div class="kv"><span>${k}:</span> <b>${v}</b></div>`).join('');
+  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${esc(deviceText(p.device_class))} ${fmt(p.In_a)} A`, p.device_class], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Определяет', esc(govLabel(c.governing_constraint)), c.governing_constraint]].map(([k, v, ttl]) => `<div class="kv"><span>${k}:</span> <b${ttl ? ` title="${esc(ttl)}"` : ''}>${v}</b></div>`).join('');
 }
 $('btnSaveCircuit').addEventListener('click', () => {
   const c = curCircuit(); if (!c) return;
@@ -632,7 +653,7 @@ function renderTCC(t) {
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
   const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#1E40AF' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#4E9B6E' : '#C9D6EA'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Свип сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${s.governing})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B45309', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B45309', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
@@ -640,7 +661,7 @@ function renderVD(v) {
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#15803D'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Дерейтинг: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#15803D'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
   if (!s) return; const col = { PASS: '#15803D', FAIL: '#DC2626', NEEDS_REVIEW: '#B45309' }[s.status] || '#5B6B8C';
@@ -648,11 +669,11 @@ function renderSLD(s) {
   s.nodes.forEach((n, idx) => {
     if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#1E40AF" stroke-width="2"/>`;
     svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : '#BFD3F2'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="14" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#42557A" font-size="12" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#42557A" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
     x += bw + gap;
   });
-  svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${s.status} · связывает: ${s.governing}</text></svg>`;
+  svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${esc(stLabel(s.status))} · определяет: ${esc(govLabel(s.governing))}</text></svg>`;
   $('plot_sld').innerHTML = svg;
 }
 function renderTrace(r) {
@@ -675,7 +696,7 @@ $('tabs').addEventListener('click', e => {
 function addMsg(cls, html, sub) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html + (sub ? `<small>${esc(sub)}</small>` : ''); $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight; }
 async function chatSend() {
   const text = $('chatInput').value.trim(); if (!text) return; addMsg('user', esc(text)); $('chatInput').value = ''; addMsg('bot', 'разбираю…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${p.device_class} <b>${fmt(p.In_a)} A</b>, статус <b>${VIZ.result.overall_status}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
+  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${esc(deviceText(p.device_class))} <b>${fmt(p.In_a)} A</b>, статус <b>${esc(stLabel(VIZ.result.overall_status))}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
   catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
 }
 async function doExplain() {
@@ -820,9 +841,9 @@ async function createShareLink() {
     if (navigator.clipboard?.writeText) {
       try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
     }
-    if (!copied) prompt('Скопируйте read-only ссылку:', link);
+    if (!copied) prompt('Скопируйте ссылку (только просмотр):', link);
     toast(
-      `${copied ? 'Read-only share-ссылка скопирована' : 'Read-only share-ссылка создана'}. Любой с ссылкой может читать проект.`,
+      `${copied ? 'Share-ссылка (только просмотр) скопирована' : 'Share-ссылка (только просмотр) создана'}. Любой с ссылкой может читать проект.`,
       'Открыть',
       () => go('/s/' + payload.token),
     );
@@ -844,7 +865,7 @@ async function renderShared(token) {
       : '<tr><td colspan="13" class="empty">В проекте нет цепей.</td></tr>';
     renderTotals(report.board, 'sharedTotals');
     renderSldInto(report.sld, 'sharedSld');
-    $('sharedIdentity').textContent = `${report.data_identity} ${report.provenance_note} ${report.signoff_notice} ${report.disclaimer}`;
+    $('sharedIdentity').textContent = humanizeSections(`${report.data_identity} ${report.provenance_note} ${report.signoff_notice} ${report.disclaimer}`);
     topBadge(report.board.status);
   } catch (error) {
     body.innerHTML = `<tr><td colspan="13" style="color:var(--bad)">${esc(error.message)}</td></tr>`;
@@ -856,7 +877,7 @@ async function renderShared(token) {
 window.addEventListener('hashchange', route);
 async function boot() {
   toggleSrc(); toggleCurve(); wsGet(); migrateLegacy();
-  try { HEALTH = await (await fetch(API + '/api/health')).json(); $('modeTag').textContent = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; } catch { $('modeTag').textContent = 'offline'; }
+  try { HEALTH = await (await fetch(API + '/api/health')).json(); const el = $('modeTag'); el.textContent = HEALTH.mode === 'fallback' ? 'ИИ: резервный режим' : 'ИИ: активен'; el.title = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; } catch { const el = $('modeTag'); el.textContent = 'ИИ: недоступен'; el.title = 'offline'; }
   try { PACKS = await (await fetch(API + '/api/packs')).json(); } catch { PACKS = []; }
   SYNC_AVAILABLE = HEALTH.project_store === 'neon';
   await syncFromServer();
