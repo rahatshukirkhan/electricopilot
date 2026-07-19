@@ -147,6 +147,10 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .filebtn.primary{background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);
   border:none;border-radius:var(--r-sm);padding:8px 14px;font-weight:600;letter-spacing:.01em;
   box-shadow:0 1px 2px rgba(15,27,51,.12),0 4px 12px -6px rgba(30,64,175,.4)}
+/* file-input labels styled as ghost buttons (docs/17 §6) — button.ghost rules don't reach label.filebtn */
+.filebtn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:7px 12px;font-weight:500;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease)}
+.filebtn.ghost:hover{border-color:var(--line-2);background:var(--elev)}
 
 /* panels --------------------------------------------------------------- */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:13px 15px;box-shadow:var(--shadow)}
@@ -311,12 +315,17 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .center{overflow:hidden}
 
 /* form ---------------------------------------------------------------- */
-.form{display:flex;flex-direction:column;gap:9px}
+.form{display:flex;flex-direction:column;gap:16px}
 .form label{display:block;font:500 11px/1.2 var(--sans);color:var(--dim);text-transform:none}
 .form label input,.form label select{margin-top:5px}
 .row{display:flex;gap:9px}.row>label{flex:1;min-width:0}
 .btns{margin-top:6px}
 .form .row.btns button{width:100%}
+/* fieldset groups (docs/17 §5): no default box — thin top rule + panel-h legend */
+.fgroup{display:flex;flex-direction:column;gap:9px;border:0;border-top:1px solid var(--line);
+  margin:0;padding:14px 0 0;min-width:0;min-inline-size:0}
+.fgroup>legend{display:block;width:100%;float:none;padding:0;margin:0;
+  font:600 11px/1 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.09em}
 
 /* summary bar --------------------------------------------------------- */
 .summary{display:flex;flex-wrap:wrap;gap:10px 8px;background:var(--panel);

@@ -36,8 +36,8 @@
         <input id="dashSearch" placeholder="поиск…" />
         <button id="btnNewProject" class="primary">+ Новый щит</button>
         <button id="btnSample" class="ghost">Загрузить пример</button>
-        <label class="primary filebtn">Импортировать щит XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
-        <label class="ghost filebtn">Импорт .ecproj.json<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
+        <label class="ghost filebtn">Импорт щита из XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
+        <label class="ghost filebtn">Открыть файл проекта<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
       </div>
     </div>
     <section id="importReview" class="panel import-review" hidden>
@@ -61,9 +61,9 @@
         <h3>R11 — заявлено / требуется по расчёту</h3>
         <div id="importDiff" class="import-diff"></div>
       </div>
-      <label class="import-confirm"><input id="importConfirm" type="checkbox" /> Я проверил mapping и явно подтверждаю отмеченные assumptions. Значения остаются UNSIGNED_ADVISORY.</label>
+      <label class="import-confirm"><input id="importConfirm" type="checkbox" /> Я проверил сопоставление колонок и подтверждаю отмеченные допущения. Результат остаётся не подписанным (рекомендательным).</label>
       <div class="import-actions">
-        <button id="btnImportRemap" class="ghost">Пересчитать с этим mapping</button>
+        <button id="btnImportRemap" class="ghost">Пересчитать с этим сопоставлением</button>
         <button id="btnImportCreate" class="primary" disabled>Создать проект</button>
       </div>
       <p id="importIdentity" class="disclaimer"></p>
@@ -75,7 +75,7 @@
   <section id="screen-shared" class="screen" hidden>
     <div class="shared-head">
       <div>
-        <div class="badge review">READ-ONLY · UNSIGNED_ADVISORY</div>
+        <div class="badge review" title="READ-ONLY · UNSIGNED_ADVISORY">Только просмотр · не подписано</div>
         <h2 id="sharedName">Загрузка share-ссылки…</h2>
         <p id="sharedMeta" class="dim"></p>
       </div>
@@ -119,7 +119,7 @@
         <button id="btnPrint" class="ghost" title="Печатная страница / PDF"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
         <button id="btnReport" class="ghost">Отчёт по щиту</button>
         <button id="btnShare" class="ghost"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Share-ссылка</button>
-        <button id="btnExportProj" class="ghost">Экспорт .ecproj</button>
+        <button id="btnExportProj" class="ghost">Сохранить файл проекта</button>
         <button id="btnBackDash" class="ghost">← К проектам</button>
       </div>
     </div>
@@ -174,7 +174,7 @@
       <button id="btnBackPanel" class="ghost">← К щиту</button>
       <div class="ed-nav"><button id="btnPrev" class="mini">‹ пред</button><span id="edRef"></span><button id="btnNext" class="mini">след ›</button></div>
       <div class="ed-right">
-        <span id="edSignoff" class="badge small">UNSIGNED_ADVISORY</span>
+        <span id="edSignoff" class="badge small" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
         <button id="btnSign" class="ghost">Подписать цепь</button>
         <button id="btnSaveCircuit" class="primary">Сохранить в щит</button>
       </div>
@@ -185,47 +185,61 @@
         <section class="panel">
           <div class="panel-h">Параметры цепи</div>
           <div class="form">
-            <div class="row">
-              <label>Ref <input id="f_ref" placeholder="L1" /></label>
-              <label>Название <input id="f_desc" value="Цепь" /></label>
-            </div>
-            <div class="row">
-              <label>Ввод <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select></label>
-              <label id="wrap_power">P, Вт <input id="f_power" type="number" value="3680" /></label>
-              <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
-            </div>
-            <div class="row">
-              <label>U, В <input id="f_voltage" type="number" value="230" /></label>
-              <label>Фаз <select id="f_phases"><option selected>1</option><option>3</option></select></label>
-              <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.95" /></label>
-            </div>
-            <div class="row">
-              <label>Назначение <select id="f_purpose"><option>lighting</option><option>power</option><option selected>socket</option><option>motor</option><option>general</option></select></label>
-              <label>Фаза щита <select id="f_phase"><option>L1</option><option>L2</option><option>L3</option><option value="L1L2L3">3ф</option></select></label>
-            </div>
-            <div class="row">
-              <label>Метод <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select></label>
-              <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
-              <label>Изоляция <select id="f_insulation"><option selected>PVC</option><option>XLPE</option></select></label>
-            </div>
-            <div class="row">
-              <label>t окр., °C <input id="f_ambient" type="number" value="30" /></label>
-              <label>Групп. <input id="f_grouping" type="number" value="1" /></label>
-              <label>Длина, м <input id="f_length" type="number" value="18" /></label>
-            </div>
-            <div class="row">
-              <label>Аппарат <select id="f_device"><option selected>MCB</option><option>MCCB</option><option>gG_fuse</option></select></label>
-              <label id="wrap_curve">Хар-ка <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
-            </div>
-            <div class="row">
-              <label>I КЗ, А <input id="f_iscc" type="number" value="3000" /></label>
-              <label title="время отключения аппарата для проверки КЗ (мгновенная зона ≈0.01 с; не путать с 0.4 с ADS)">t КЗ, с <input id="f_tdisc" type="number" step="0.01" value="0.01" /></label>
-              <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
-            </div>
-            <div class="row">
-              <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
-              <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
-            </div>
+            <fieldset class="fgroup">
+              <legend>Нагрузка</legend>
+              <div class="row">
+                <label>Ref <input id="f_ref" placeholder="L1" /></label>
+                <label>Название <input id="f_desc" value="Цепь" /></label>
+              </div>
+              <div class="row">
+                <label>Ввод <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select></label>
+                <label id="wrap_power">P, Вт <input id="f_power" type="number" value="3680" /></label>
+                <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
+              </div>
+              <div class="row">
+                <label>U, В <input id="f_voltage" type="number" value="230" /></label>
+                <label>Фаз <select id="f_phases"><option selected>1</option><option>3</option></select></label>
+                <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.95" /></label>
+              </div>
+              <div class="row">
+                <label>Назначение <select id="f_purpose"><option value="lighting">освещение</option><option value="power">силовая</option><option value="socket" selected>розетки</option><option value="motor">двигатель</option><option value="general">прочее</option></select></label>
+                <label>Фаза щита <select id="f_phase"><option>L1</option><option>L2</option><option>L3</option><option value="L1L2L3">3ф</option></select></label>
+              </div>
+            </fieldset>
+            <fieldset class="fgroup">
+              <legend>Кабель и прокладка</legend>
+              <div class="row">
+                <label>Метод <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select></label>
+                <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
+                <label>Изоляция <select id="f_insulation"><option selected>PVC</option><option>XLPE</option></select></label>
+              </div>
+              <div class="row">
+                <label>t окр., °C <input id="f_ambient" type="number" value="30" /></label>
+                <label>Групп. <input id="f_grouping" type="number" value="1" /></label>
+                <label>Длина, м <input id="f_length" type="number" value="18" /></label>
+              </div>
+              <div class="row">
+                <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="fgroup">
+              <legend>Защита</legend>
+              <div class="row">
+                <label>Аппарат <select id="f_device"><option value="MCB" selected>Автомат (MCB)</option><option value="MCCB">Автомат в литом корпусе (MCCB)</option><option value="gG_fuse">Предохранитель gG</option></select></label>
+                <label id="wrap_curve">Характеристика <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
+              </div>
+              <div class="row">
+                <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
+                <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="fgroup">
+              <legend>Короткое замыкание</legend>
+              <div class="row">
+                <label>I КЗ, А <input id="f_iscc" type="number" value="3000" /></label>
+                <label title="время отключения аппарата для проверки КЗ (мгновенная зона ≈0.01 с; не путать с 0.4 с ADS)">t КЗ, с <input id="f_tdisc" type="number" step="0.01" value="0.01" /></label>
+              </div>
+            </fieldset>
             <div class="row btns"><button id="recalc" class="ghost">Пересчитать</button></div>
           </div>
         </section>
@@ -234,10 +248,10 @@
       <section class="col center">
         <div class="summary" id="summary"></div>
         <div class="tabs" id="tabs">
-          <button data-tab="tcc" class="active">TCC координация</button>
-          <button data-tab="sweep">Свип сечения</button>
+          <button data-tab="tcc" class="active">Время-токовые хар-ки</button>
+          <button data-tab="sweep">Подбор сечения</button>
           <button data-tab="vd">Профиль ΔU</button>
-          <button data-tab="derating">Дерейтинг</button>
+          <button data-tab="derating">Поправочные коэффициенты</button>
           <button data-tab="sld">Однолинейка</button>
         </div>
         <div class="artifact">
@@ -266,7 +280,7 @@
           </div>
         </section>
         <section class="panel">
-          <div class="panel-h">Трасса аудита (до норм)</div>
+          <div class="panel-h">Обоснование расчёта · по пунктам норм</div>
           <div id="trace" class="trace"></div>
         </section>
       </aside>
