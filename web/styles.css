@@ -354,6 +354,8 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .chatbar textarea{resize:vertical;min-height:44px}
 .chatbar button{align-self:stretch;width:46px;display:flex;align-items:center;justify-content:center;padding:0}
 .chatbar button .icon{width:18px;height:18px}
+.board-copilot{margin-top:14px}.board-chat{max-height:220px;min-height:70px}.proposal{margin-top:12px}.proposal-board{padding:12px;border:1px solid var(--line);border-radius:8px;display:flex;gap:10px;flex-wrap:wrap}
+.board-copilot .chatbar button{width:auto;padding:0 16px}
 
 /* audit trace --------------------------------------------------------- */
 .trace{display:flex;flex-direction:column;gap:7px}
