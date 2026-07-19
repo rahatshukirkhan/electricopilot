@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>ElectriCopilot Studio — прототип UX-потоков (ТЗ 18)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" />
+<link rel="stylesheet" href="./styles.css" />
+<link rel="stylesheet" href="./prototype.css" />
+</head>
+<body>
+<header class="p-topbar">
+  <div class="brand" title="Прототип UX-потоков">
+    <svg class="bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg>
+    ElectriCopilot <span>Studio</span>
+  </div>
+  <span class="p-proto-tag" title="docs/18">ПРОТОТИП · ТЗ 18</span>
+  <div class="p-save" id="pSave">сохранено локально · без синхронизации</div>
+</header>
+
+<details class="p-disc">
+  <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>Рекомендательный расчёт · нормы синтетические · подробнее</summary>
+  <div class="p-disc-body">Значения норм-таблиц <b>синтетические</b> (не IEC); ссылки на пункты IEC — реальные.
+    Результат носит рекомендательный характер и требует независимой проверки и <b>подписи инженера</b> по каждой цепи и по щиту.</div>
+</details>
+
+<main>
+  <!-- ============ SCREEN: BOARD ============ -->
+  <section id="pScreenBoard" class="p-screen">
+    <div class="p-boardgrid">
+      <div class="p-boardcard" id="pBoardCard"><!-- filled by JS --></div>
+
+      <div class="p-boardmain">
+        <div class="p-tablewrap">
+          <table class="p-table">
+            <thead><tr>
+              <th>Цепь</th><th>Назначение</th><th>Аппарат</th><th>Кабель</th>
+              <th>IZ · запас к IB</th><th>ΔU · из предела</th><th>Статус</th>
+            </tr></thead>
+            <tbody id="pTableBody"></tbody>
+          </table>
+        </div>
+
+        <section class="p-norm" id="pNorm">
+          <div class="p-norm-h">Нормоконтроль <span id="pNormSummary" class="badge small">не запускался</span></div>
+          <div id="pNormBody"><div class="p-empty">Запусти нормоконтроль в панели «Следующий шаг» — замечания появятся здесь и отметят цепи в таблице.</div></div>
+        </section>
+
+        <details class="p-sld">
+          <summary>Однолинейная схема</summary>
+          <div class="p-sldbody" id="pSld"></div>
+        </details>
+      </div>
+
+      <aside class="p-boardaside">
+        <div class="p-next" id="pNext"><!-- filled by JS --></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: CIRCUIT ============ -->
+  <section id="pScreenCircuit" class="hidden">
+    <div class="p-cbar">
+      <button class="ghost" id="pBackBoard">← К щиту</button>
+      <div class="p-cnav"><button class="mini" id="pPrev">‹ пред</button><span id="pEdRef"></span><button class="mini" id="pNext2">след ›</button></div>
+      <div class="p-cright">
+        <span id="pSignoff" class="badge small">—</span>
+        <button class="ghost" id="pSaveCircuit">Сохранить в щит</button>
+        <span class="p-sep"></span>
+        <button class="p-signbtn" id="pSignBtn">
+          <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Подписать цепь
+        </button>
+      </div>
+    </div>
+
+    <div class="p-cgrid">
+      <aside class="col left">
+        <section class="panel">
+          <div class="panel-h">Параметры цепи</div>
+          <div class="form" id="pForm"><!-- fieldsets filled by JS --></div>
+        </section>
+      </aside>
+
+      <section class="p-ccenter">
+        <div class="p-verdict" id="pVerdict">
+          <button class="ghost p-askbtn" id="pAskCopilot">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+            Спросить копилота
+          </button>
+          <div id="pVerdictBody"></div>
+        </div>
+
+        <div>
+          <div class="tabs" id="pTabs">
+            <button data-tab="tcc" class="active">Время-токовые хар-ки</button>
+            <button data-tab="sweep">Подбор сечения</button>
+            <button data-tab="vd">Профиль ΔU</button>
+            <button data-tab="derating">Поправочные коэффициенты</button>
+            <button data-tab="sld">Однолинейка</button>
+          </div>
+          <div class="p-artifact">
+            <div id="pPlot_tcc" class="p-plot"></div>
+            <div id="pPlot_sweep" class="p-plot" style="display:none"></div>
+            <div id="pPlot_vd" class="p-plot" style="display:none"></div>
+            <div id="pPlot_derating" class="p-plot" style="display:none"></div>
+            <div id="pPlot_sld" class="p-plot" style="display:none"></div>
+          </div>
+        </div>
+
+        <section class="panel p-reason">
+          <div class="panel-h">Обоснование расчёта · по пунктам норм</div>
+          <div id="pReason"></div>
+        </section>
+      </section>
+    </div>
+  </section>
+</main>
+
+<!-- copilot drawer -->
+<aside class="p-drawer" id="pDrawer" aria-hidden="true">
+  <div class="p-drawer-h">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+    Копилот
+    <button class="mini" id="pDrawerClose">Закрыть</button>
+  </div>
+  <div class="p-drawer-body" id="pDrawerBody"></div>
+  <div class="p-drawer-bar">
+    <input id="pDrawerInput" placeholder="Опиши цепь словами…" />
+    <button class="primary" id="pDrawerSend" aria-label="Отправить">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-4 16-4.5-6L4 12Z"/><path d="m11.5 14 4.5-6"/></svg>
+    </button>
+  </div>
+</aside>
+
+<!-- sign modal -->
+<div class="p-modal-back" id="pModalBack">
+  <div class="p-modal" role="dialog" aria-modal="true" aria-labelledby="pModalTitle">
+    <div class="p-modal-h" id="pModalTitle">Подпись цепи</div>
+    <div class="p-modal-b">
+      <div class="p-modal-summary" id="pModalSummary"></div>
+      <div class="p-modal-warn">Значения норм-таблиц синтетические (иллюстративные). Подпись подтверждает, что вы независимо проверили расчёт по действующему стандарту и каталогам производителей.</div>
+      <label class="p-modal-ack"><input type="checkbox" id="pAck" /> Я, инженер, проверил расчёт и принимаю ответственность за эту цепь.</label>
+    </div>
+    <div class="p-modal-f">
+      <button class="ghost" id="pModalCancel">Отмена</button>
+      <button class="primary" id="pModalConfirm" disabled>Подписать</button>
+    </div>
+  </div>
+</div>
+
+<div class="p-toasts" id="pToasts"></div>
+
+<footer class="p-foot">
+  Кликабельный UX-прототип (ТЗ 18) на захардкоженном моке щита «ВРУ-1». Числа <b>иллюстративные</b>,
+  «живой пересчёт» — детерминированная клиентская мок-функция; вызовов к API нет. Не производственная версия.
+</footer>
+
+<script src="./prototype.js"></script>
+</body>
+</html>
