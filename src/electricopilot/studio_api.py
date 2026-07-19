@@ -6,13 +6,14 @@ Requires the `api` extra (fastapi + uvicorn). Run locally:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,7 @@ from .exceptions import (
 from .export import build_bundle, build_sld
 from .export.svg import render_svg
 from .guardrails import check_numeric_provenance
+from .import_schedule import MAX_IMPORT_BYTES, ScheduleImportError, import_schedule
 from .llm.client import OpenRouterClient
 from .llm.explain import explain_render, explain_render_template
 from .llm.intake import intake_parse
@@ -265,6 +267,53 @@ def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
         except (LlmConfigError, LlmError):
             pass
     return report.model_dump()  # type: ignore[no-any-return]
+
+
+@app.post("/api/import-schedule")
+async def import_schedule_endpoint(
+    file: UploadFile = File(...),
+    mapping: str | None = Form(default=None),
+    confirmed: bool = Form(default=False),
+    norm_pack: str | None = Form(default=None),
+) -> dict[str, Any]:
+    """Parse XLSX/CSV, expose review mapping/assumptions, and run deterministic R11."""
+    filename = file.filename or "schedule"
+    data = await file.read(MAX_IMPORT_BYTES + 1)
+    manual_mapping: dict[str, object] | None = None
+    if mapping is not None:
+        try:
+            parsed_mapping = json.loads(mapping)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_mapping_json", "message": "Mapping должен быть JSON-объектом."},
+            ) from None
+        if not isinstance(parsed_mapping, dict):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_mapping_json", "message": "Mapping должен быть JSON-объектом."},
+            )
+        manual_mapping = parsed_mapping
+    pack = _pack_or_400(norm_pack)
+    cfg = get_config()
+    try:
+        result = import_schedule(
+            filename=filename,
+            data=data,
+            pack=pack,
+            manual_mapping=manual_mapping,
+            confirmed=confirmed,
+            llm_client=_client() if cfg.llm_available and manual_mapping is None else None,
+            llm_model=cfg.model_fast if cfg.llm_available else None,
+        )
+    except ScheduleImportError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from None
+    except DataPackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return result.model_dump(mode="json")
 
 
 def _safe_filename(project: Project) -> str:

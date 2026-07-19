@@ -36,9 +36,38 @@
         <input id="dashSearch" placeholder="поиск…" />
         <button id="btnNewProject" class="primary">+ Новый щит</button>
         <button id="btnSample" class="ghost">Загрузить пример</button>
+        <label class="primary filebtn">Импортировать щит XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
         <label class="ghost filebtn">Импорт .ecproj.json<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
       </div>
     </div>
+    <section id="importReview" class="panel import-review" hidden>
+      <div class="panel-h">
+        Проверка импорта XLSX/CSV
+        <button id="btnImportCancel" class="ghost">Закрыть</button>
+      </div>
+      <p id="importSource" class="dim"></p>
+      <div id="importIssues" class="import-issues"></div>
+      <div class="import-grid">
+        <div>
+          <h3>Сопоставление колонок</h3>
+          <table class="import-table"><thead><tr><th>Колонка файла</th><th>Поле проекта</th><th>Источник</th></tr></thead><tbody id="importMappingBody"></tbody></table>
+        </div>
+        <div>
+          <h3>Предпросмотр исходных строк</h3>
+          <div id="importPreview" class="import-preview"></div>
+        </div>
+      </div>
+      <div>
+        <h3>R11 — заявлено / требуется по расчёту</h3>
+        <div id="importDiff" class="import-diff"></div>
+      </div>
+      <label class="import-confirm"><input id="importConfirm" type="checkbox" /> Я проверил mapping и явно подтверждаю отмеченные assumptions. Значения остаются UNSIGNED_ADVISORY.</label>
+      <div class="import-actions">
+        <button id="btnImportRemap" class="ghost">Пересчитать с этим mapping</button>
+        <button id="btnImportCreate" class="primary" disabled>Создать проект</button>
+      </div>
+      <p id="importIdentity" class="disclaimer"></p>
+    </section>
     <div id="projectGrid" class="cards"></div>
   </section>
 
