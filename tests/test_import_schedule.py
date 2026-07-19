@@ -245,4 +245,4 @@ def test_studio_requires_review_and_confirmation_before_localstorage_write() -> 
     storage_call = "projSet(validated.project)"
     assert app_js.index(confirmed_call) < app_js.index(validation_call) < app_js.index(storage_call)
     assert "currentImportMapping()" in app_js
-    assert "Я проверил mapping" in (Path(__file__).parents[1] / "web/index.html").read_text()
+    assert "Я проверил сопоставление колонок" in (Path(__file__).parents[1] / "web/index.html").read_text()
