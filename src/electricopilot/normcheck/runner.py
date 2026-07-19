@@ -1,6 +1,7 @@
 """Deterministic normcheck runner and stable result projection (docs/14)."""
 from __future__ import annotations
 
+from ..calculation_manifest import build_calculation_manifest, manifest_data_identity
 from ..data.loader import DataPack
 from ..engine import size
 from ..models import DISCLAIMER, SizingRequest, provenance_note_for
@@ -143,7 +144,8 @@ def summarize_findings(findings: list[Finding]) -> NormcheckSummary:
 
 
 def build_normcheck_report(project: ProjectInput, pack: DataPack) -> NormcheckReport:
-    findings = run_normcheck(validate_project(project), pack)
+    canonical = validate_project(project)
+    findings = run_normcheck(canonical, pack)
     provenance = pack.assess_provenance(
         sorted({
             section
@@ -151,9 +153,10 @@ def build_normcheck_report(project: ProjectInput, pack: DataPack) -> NormcheckRe
             for section in (finding.source_section, *finding.data_sections)
         })
     )
+    manifest = build_calculation_manifest(canonical, pack)
     data_identity = (
-        f"Норм-пакет: {pack.meta.name} v{pack.meta.version}; происхождение: {pack.meta.status}; "
-        f"проверка использованных данных: {provenance.verification_status}."
+        f"{manifest_data_identity(manifest)} "
+        f"Проверка использованных данных: {provenance.verification_status}."
     )
     return NormcheckReport(
         findings=findings,
@@ -166,6 +169,8 @@ def build_normcheck_report(project: ProjectInput, pack: DataPack) -> NormcheckRe
         },
         data_provenance=provenance.model_dump(),
         data_identity=data_identity,
+        calculation_id=manifest.calculation_id,
+        calculation_manifest=manifest,
         provenance_note=provenance_note_for(provenance),
         disclaimer=DISCLAIMER,
         signoff_notice=(

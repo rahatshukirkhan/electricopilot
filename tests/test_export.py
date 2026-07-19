@@ -252,6 +252,11 @@ def test_bundle_entry_names_are_stable():
     assert a == b
 
 
+def test_bundle_contains_typed_calculation_manifest_inputs():
+    zf = zipfile.ZipFile(io.BytesIO(build_bundle(_board())))
+    assert {"manifest.json", "calculation-input.json", "norm-pack.json"} <= set(zf.namelist())
+
+
 # --- review-fix regressions -------------------------------------------------------------
 def test_rcd_present_without_ma_defaults_to_30():
     """rcd.present=true but no `ma` must render '30мА', not 'NoneмА' (code-review finding)."""

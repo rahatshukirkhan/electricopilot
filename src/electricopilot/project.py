@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .calculation_manifest import build_calculation_manifest, manifest_data_identity
 from .data.loader import DataPack, load_data_pack
 from .engine import size
 from .models import DISCLAIMER, SizingRequest, provenance_note_for
@@ -155,9 +156,10 @@ def build_project_report(
                  "spare_pct": round(max(0, ways_total - used) / ways_total * 100, 0) if ways_total else 0},
     }
     provenance_note = provenance_note_for(data_provenance)
+    manifest = build_calculation_manifest(data, pack)
     data_identity = (
-        f"Норм-пакет: {pack.meta.name} v{pack.meta.version}; происхождение: {pack.meta.status}; "
-        f"проверка данных: {data_provenance.verification_status}."
+        f"{manifest_data_identity(manifest)} "
+        f"Проверка данных: {data_provenance.verification_status}."
     )
     signoff_notice = (
         "UNSIGNED_ADVISORY — требуется проверка и подпись квалифицированного инженера."
@@ -170,6 +172,8 @@ def build_project_report(
         "data_provenance": data_provenance.model_dump(),
         "provenance_note": provenance_note, "disclaimer": DISCLAIMER,
         "data_identity": data_identity,
+        "calculation_id": manifest.calculation_id,
+        "calculation_manifest": manifest.model_dump(mode="json"),
         "signoff_notice": signoff_notice,
         "norm_pack": {
             "name": pack.meta.name,
