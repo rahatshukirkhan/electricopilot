@@ -86,6 +86,7 @@ function sampleProject() {
 // ---------- state ----------
 let PROJ = null, CID = null, VIZ = null, NORMCHECK = null, HEALTH = { mode: 'fallback' }, PACKS = [];
 let IMPORT_FILE = null, IMPORT_RESULT = null;
+let BOARD_COPILOT_PROJECT_ID = null, BOARD_COPILOT_HISTORY = [], BOARD_PROPOSAL = null, BOARD_PROPOSAL_BASE = null, COPILOT_UNDO = null;
 let SYNC_AVAILABLE = false;
 const PROJECT_SYNC_TIMERS = new Map();
 function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
@@ -300,6 +301,11 @@ async function createImportedProject() {
 // ========================= PROJECT / BOARD =========================
 async function renderProject() {
   const p = PROJ;
+  if (BOARD_COPILOT_PROJECT_ID !== p.id) {
+    BOARD_COPILOT_PROJECT_ID = p.id; BOARD_COPILOT_HISTORY = []; COPILOT_UNDO = null;
+    renderBoardProposal(null); $('boardProposalUndo').hidden = true;
+    $('boardCopilotMessages').innerHTML = '<div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>';
+  }
   crumbs([['Проекты', '#/'], [p.name, '#/p/' + p.id]]);
   $('b_name').value = p.name; $('b_ref').value = p.board_ref || ''; $('b_location').value = p.location || '';
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
@@ -380,6 +386,102 @@ $('btnNormcheck').addEventListener('click', loadNormcheck);
 $('btnBundle').addEventListener('click', downloadBundle);
 $('btnPrint').addEventListener('click', () => { if (PROJ) go('/p/' + PROJ.id + '/print'); });
 $('btnSldRefresh').addEventListener('click', loadSldPreview);
+
+// ---------- board-level Copilot: proposal only (docs/15-copilot-tools) ----------
+function boardCopilotMessage(cls, text, sub = '') {
+  const root = $('boardCopilotMessages');
+  const message = document.createElement('div'); message.className = 'msg ' + cls;
+  message.innerHTML = `${esc(text)}${sub ? `<small>${esc(sub)}</small>` : ''}`;
+  root.appendChild(message); root.scrollTop = root.scrollHeight;
+}
+function metricChange(label, before, after) {
+  const show = value => typeof value === 'number' ? fmt(value) : (value ?? '—');
+  return `<span><b>${esc(label)}:</b> ${esc(show(before))} → ${esc(show(after))}</span>`;
+}
+function renderBoardProposal(proposal, baseVersion = null) {
+  BOARD_PROPOSAL = proposal;
+  BOARD_PROPOSAL_BASE = proposal ? baseVersion : null;
+  const panel = $('boardProposal'); panel.hidden = !proposal;
+  if (!proposal) { $('boardProposalDiff').innerHTML = ''; return; }
+  const circuits = proposal.diff.circuits.map(item => {
+    const before = item.before || {}, after = item.after || {};
+    return `<article class="norm-card info"><span class="norm-sev">${esc(item.change.toUpperCase())}</span>
+      <div class="norm-main"><h4>${esc(item.ref || item.circuit_id)}</h4>
+        <div class="norm-values">
+          ${metricChange('S, мм²', before.section_mm2, after.section_mm2)} ·
+          ${metricChange('In, A', before.protection_in_a, after.protection_in_a)} ·
+          ${metricChange('IB, A', before.design_current_a, after.design_current_a)} ·
+          ${metricChange('ΔU, %', before.voltage_drop_pct, after.voltage_drop_pct)} ·
+          <span><b>статус:</b> ${esc(before.status || '—')} → ${esc(after.status || '—')}</span>
+        </div></div></article>`;
+  }).join('');
+  const b0 = proposal.diff.board_before, b1 = proposal.diff.board_after;
+  $('boardProposalDiff').innerHTML = circuits + `<div class="norm-values proposal-board">
+    ${metricChange('Статус щита', b0.status, b1.status)} ·
+    ${metricChange('Подключено, кВт', b0.connected_kw, b1.connected_kw)} ·
+    ${metricChange('Перекос, %', b0.imbalance_pct, b1.imbalance_pct)} ·
+    ${metricChange('Ток ввода, A', b0.incomer_md_a, b1.incomer_md_a)}
+  </div>`;
+  $('boardProposalIdentity').textContent = `${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`;
+}
+async function sendBoardCopilot() {
+  const input = $('boardCopilotInput'), message = input.value.trim();
+  if (!message || !PROJ) return;
+  const baseVersion = PROJ.updated_at;
+  input.value = ''; boardCopilotMessage('user', message); boardCopilotMessage('bot', 'Copilot планирует и вызывает инструменты…');
+  const busy = $('boardCopilotMessages').lastChild;
+  try {
+    const response = await postJSON('/api/copilot', { project: PROJ, message, history: BOARD_COPILOT_HISTORY.slice(-20) });
+    busy.remove();
+    boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
+    BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
+    if (!response.provenance_ok) boardCopilotMessage('bot', `Числа reply не прошли провенанс: ${response.unverified_numbers.join(', ')}. Proposal и расчёт не изменены.`);
+    if (response.error) boardCopilotMessage('bot', `Запрос не завершён: ${response.error}.`);
+    renderBoardProposal(response.proposal, baseVersion);
+  } catch (error) { busy.remove(); boardCopilotMessage('bot', 'Ошибка: ' + error.message); }
+}
+function applyBoardProposal() {
+  if (!BOARD_PROPOSAL || !PROJ) return;
+  if (PROJ.updated_at !== BOARD_PROPOSAL_BASE) {
+    toast('Проект изменился после расчёта proposal. Запроси новый diff.'); return;
+  }
+  const ids = new Set(PROJ.circuits.map(item => item.id));
+  for (const operation of BOARD_PROPOSAL.ops) {
+    if (operation.op === 'add' && ids.has(operation.circuit_id)) { toast('Proposal устарел: id цепи уже существует.'); return; }
+    if (operation.op !== 'add' && !ids.has(operation.circuit_id)) { toast('Proposal устарел: целевая цепь не найдена.'); return; }
+    if (operation.op === 'add') ids.add(operation.circuit_id);
+    if (operation.op === 'delete') ids.delete(operation.circuit_id);
+  }
+  COPILOT_UNDO = JSON.parse(JSON.stringify(PROJ));
+  BOARD_PROPOSAL.ops.forEach(operation => {
+    if (operation.op === 'add') {
+      PROJ.circuits.push({ id: operation.circuit_id, ref: operation.ref || '', sort_index: PROJ.circuits.length,
+        request: operation.request, meta: operation.meta, result: null, signoff: { status: 'UNSIGNED_ADVISORY' } });
+    } else if (operation.op === 'edit') {
+      const circuit = PROJ.circuits.find(item => item.id === operation.circuit_id);
+      if (operation.request) circuit.request = operation.request;
+      if (operation.meta) circuit.meta = operation.meta;
+      if (operation.ref !== null && operation.ref !== undefined) circuit.ref = operation.ref;
+      circuit.result = null; circuit.signoff = { status: 'UNSIGNED_ADVISORY' };
+    } else if (operation.op === 'delete') {
+      PROJ.circuits = PROJ.circuits.filter(item => item.id !== operation.circuit_id);
+    }
+  });
+  PROJ.circuits.forEach((circuit, index) => { circuit.sort_index = index; });
+  projSet(PROJ); renderBoardProposal(null); renderProject();
+  $('boardProposalUndo').hidden = false;
+  toast('Proposal применён и отправлен на свежий серверный пересчёт.', 'Отменить', undoBoardProposal);
+}
+function undoBoardProposal() {
+  if (!COPILOT_UNDO) return;
+  PROJ = JSON.parse(JSON.stringify(COPILOT_UNDO)); COPILOT_UNDO = null;
+  projSet(PROJ); renderProject(); $('boardProposalUndo').hidden = true;
+}
+$('boardCopilotSend').addEventListener('click', sendBoardCopilot);
+$('boardCopilotInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBoardCopilot(); });
+$('boardProposalApply').addEventListener('click', applyBoardProposal);
+$('boardProposalReject').addEventListener('click', () => { renderBoardProposal(null); boardCopilotMessage('bot', 'Proposal отклонён; проект не изменён.'); });
+$('boardProposalUndo').addEventListener('click', undoBoardProposal);
 
 // ---------- deterministic normcheck (docs/14) ----------
 function resetNormcheckPanel() {

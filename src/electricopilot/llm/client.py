@@ -41,6 +41,7 @@ class OpenRouterClient:
     def complete(
         self, *, model: str, system: str, user: str,
         json_schema: dict[str, Any] | None = None, max_output_tokens: int = 2048,
+        timeout: float | None = None,
     ) -> str:
         cfg = self.config
         if not cfg.llm_available:
@@ -60,9 +61,15 @@ class OpenRouterClient:
         }
         url = f"{cfg.openrouter_base_url}/chat/completions"
         last_exc: Exception | None = None
+        request_timeout = float(timeout if timeout is not None else cfg.llm_timeout)
         for attempt in range(2):
             try:
-                resp = httpx.post(url, headers=headers, json=payload, timeout=cfg.llm_timeout)
+                resp = httpx.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=max(0.1, request_timeout / 2),
+                )
             except httpx.HTTPError as exc:
                 last_exc = exc
                 continue
@@ -83,3 +90,72 @@ class OpenRouterClient:
                 raise LlmError(f"OpenRouter {resp.status_code}: {body}")
             last_exc = LlmError(f"OpenRouter {resp.status_code}: {body}")
         raise LlmError(f"OpenRouter request failed after retries: {last_exc}")
+
+    def complete_tools(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        timeout: float,
+    ) -> dict[str, Any]:
+        """Return one normalized OpenAI-compatible function-calling turn."""
+        cfg = self.config
+        if not cfg.llm_available:
+            raise LlmConfigError("OPENROUTER_API_KEY is not set; live LLM unavailable")
+        payload = {
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+            "max_tokens": 2048,
+        }
+        headers = {
+            "Authorization": f"Bearer {cfg.openrouter_api_key}",
+            "X-Title": cfg.app_title,
+            "HTTP-Referer": cfg.http_referer,
+        }
+        url = f"{cfg.openrouter_base_url}/chat/completions"
+        last_exc: Exception | None = None
+        for _attempt in range(2):
+            try:
+                response = httpx.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=max(0.1, timeout / 2),
+                )
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                continue
+            if response.status_code == 200:
+                message = response.json()["choices"][0]["message"]
+                normalized_calls: list[dict[str, Any]] = []
+                for call in message.get("tool_calls") or []:
+                    function = call.get("function") or {}
+                    try:
+                        arguments = json.loads(function.get("arguments") or "{}")
+                    except json.JSONDecodeError as exc:
+                        raise LlmError("tool arguments are not valid JSON") from exc
+                    if not isinstance(arguments, dict):
+                        raise LlmError("tool arguments must be a JSON object")
+                    normalized_calls.append({
+                        "id": str(call.get("id") or ""),
+                        "name": str(function.get("name") or ""),
+                        "arguments": arguments,
+                    })
+                content = message.get("content")
+                if not content and not normalized_calls:
+                    raise LlmError("empty tool-calling response")
+                return {"content": content, "tool_calls": normalized_calls}
+            body = response.text[:300]
+            if response.status_code in (400, 404) and (
+                "model" in body.lower() or response.status_code == 404
+            ):
+                raise LlmConfigError(
+                    f"model '{model}' rejected by OpenRouter ({response.status_code}): {body}"
+                )
+            if response.status_code < 500:
+                raise LlmError(f"OpenRouter {response.status_code}: {body}")
+            last_exc = LlmError(f"OpenRouter {response.status_code}: {body}")
+        raise LlmError(f"OpenRouter tool request failed after retries: {last_exc}")

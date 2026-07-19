@@ -1,10 +1,23 @@
 """R1 Intake: natural-language description → SizingRequest (docs/05 §5.2). Live only."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 from ..models import SizingRequest
-from .client import OpenRouterClient, parse_json_lenient
+from .client import parse_json_lenient
+
+
+class IntakeClient(Protocol):
+    def complete(
+        self,
+        *,
+        model: str,
+        system: str,
+        user: str,
+        json_schema: dict[str, Any] | None = None,
+        max_output_tokens: int = 2048,
+        timeout: float | None = None,
+    ) -> str: ...
 
 SYSTEM = (
     "Ты — ассистент проектировщика электрики. Ты НЕ придумываешь и НЕ вычисляешь числа. "
@@ -47,10 +60,17 @@ def _first_request(data: Any) -> dict[str, Any]:
     return data
 
 
-def intake_parse(text: str, client: OpenRouterClient, *, model: str) -> SizingRequest:
+def intake_parse(
+    text: str,
+    client: IntakeClient,
+    *,
+    model: str,
+    timeout: float | None = None,
+) -> SizingRequest:
     raw = client.complete(
         model=model, system=SYSTEM,
         user=f"Описание цепи:\n{text}\n\n{_SCHEMA_HINT}",
         json_schema={"type": "object"},
+        timeout=timeout,
     )
     return SizingRequest.model_validate(_first_request(parse_json_lenient(raw)))

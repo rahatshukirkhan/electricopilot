@@ -142,6 +142,29 @@
 
     <div class="totals" id="boardTotals"></div>
 
+    <section class="panel board-copilot" id="boardCopilot">
+      <div class="panel-h">
+        Copilot щита · proposal only
+        <span class="badge review">UNSIGNED_ADVISORY</span>
+      </div>
+      <div id="boardCopilotMessages" class="chat board-chat">
+        <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
+      </div>
+      <div class="chatbar">
+        <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер на L2 и покажи детерминированный diff"></textarea>
+        <button id="boardCopilotSend" class="primary">Отправить</button>
+      </div>
+      <div id="boardProposal" class="proposal" hidden>
+        <div id="boardProposalDiff"></div>
+        <p id="boardProposalIdentity" class="disclaimer"></p>
+        <div class="row btns">
+          <button id="boardProposalApply" class="primary">Применить</button>
+          <button id="boardProposalReject" class="ghost">Отклонить</button>
+        </div>
+      </div>
+      <button id="boardProposalUndo" class="ghost" hidden>Отменить последнее применение Copilot</button>
+    </section>
+
     <section class="panel norm-panel">
       <div class="panel-h">
         Нормоконтроль

@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .config import get_config
+from .copilot import CopilotRequest, run_copilot
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
 from .exceptions import (
@@ -226,6 +227,42 @@ def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[
 
 class ProjectBody(BaseModel):
     project: Project
+
+
+@app.post("/api/copilot")
+def copilot_endpoint(body: CopilotRequest) -> dict[str, Any]:
+    """Return a bounded, read-only Copilot proposal; never write ProjectStore."""
+    cfg = get_config()
+    if not cfg.llm_available:
+        return {
+            "ok": False,
+            "reply": (
+                "OPENROUTER_API_KEY не задан — Copilot щита недоступен. "
+                "Ручное редактирование, детерминированный расчёт и нормоконтроль работают."
+            ),
+            "proposal": None,
+            "model": "",
+            "provenance_ok": True,
+            "unverified_numbers": [],
+            "incomplete": False,
+            "error": "no_key",
+        }
+    response = run_copilot(
+        body.project,
+        body.message,
+        body.history,
+        client=_client(),
+        model=cfg.model_strong,
+        parse_model=cfg.model_fast,
+    )
+    payload = response.model_dump(mode="json")
+    if response.error in {"invalid_tool", "invalid_proposal"}:
+        raise HTTPException(status_code=422, detail={
+            "code": response.error,
+            "message": response.reply,
+            "response": payload,
+        })
+    return payload
 
 
 _PROJECT_STORE_OVERRIDE: ProjectStore | None = None
