@@ -240,8 +240,8 @@ async function submitScheduleImport(confirmed, mapping = undefined) {
     renderScheduleImport();
     return IMPORT_RESULT;
   } catch (error) {
-    $('importIssues').innerHTML = `<span class="import-issue">⚠ ${esc(error.message)}</span>`;
-    toast('⚠ импорт не выполнен: ' + error.message);
+    $('importIssues').innerHTML = `<span class="import-issue">${esc(error.message)}</span>`;
+    toast('импорт не выполнен: ' + error.message);
     return null;
   } finally {
     button.disabled = false;
@@ -293,7 +293,7 @@ async function createImportedProject() {
     go('/p/' + projectId);
     toast('Щит создан после проверки mapping и assumptions');
   } catch (error) {
-    toast('⚠ проект не прошёл каноническую проверку: ' + error.message);
+    toast('проект не прошёл каноническую проверку: ' + error.message);
   }
 }
 
@@ -332,7 +332,7 @@ function renderPackSelect() {
 }
 $('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
 function rowHTML(r, readOnly = false) {
-  const sign = r.signoff === 'SIGNED' ? ' ✔' : '';
+  const sign = r.signoff === 'SIGNED' ? '<svg class="icon icon-sm" viewBox="0 0 24 24" aria-label="подписано" title="подписано"><path d="M20 6 9 17l-5-5"/></svg>' : '';
   return `<tr data-cid="${r.id}">
     <td class="mono">${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${fmt(r.pf)}</td>
     <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td>
@@ -349,7 +349,7 @@ function renderTotals(b, targetId = 'boardTotals') {
   const phaseKeys = b.topology?.phases === 1 ? ['L1'] : ['L1', 'L2', 'L3'];
   const mx = Math.max(...phaseKeys.map(k => ph[k].A), 1);
   const imbalance = t.imbalance_applicable
-    ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}`
+    ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? '' : ''}`
     : 'однофазный щит · перекос неприменим (R05)';
   const phaseTitle = b.topology?.phases === 1 ? 'Фазный ток (реальный)' : 'Баланс фаз (реальный)';
   $(targetId).innerHTML = `
@@ -443,7 +443,7 @@ async function loadNormcheck() {
   $('normSummary').textContent = 'проверяю R01–R10…';
   $('normFindings').innerHTML = '<span class="dim">Сервер заново пересчитывает все цепи…</span>';
   try { renderNormcheck(await postJSON('/api/normcheck', { project: PROJ })); }
-  catch (e) { $('normSummary').textContent = 'ошибка'; $('normFindings').innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
+  catch (e) { $('normSummary').textContent = 'ошибка'; $('normFindings').innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
 }
 $('normFindings').addEventListener('click', e => {
   const cid = e.target.closest('[data-norm-cid]')?.dataset.normCid;
@@ -462,7 +462,7 @@ async function loadSldPreview() {  // manual "Обновить предпрос�
   if (!PROJ || !PROJ.circuits.length) { el.innerHTML = '<span class="dim">Нет цепей — добавь цепь.</span>'; return; }
   el.innerHTML = '<span class="dim">Строю однолинейку…</span>';
   try { renderSldInto(await postJSON('/api/project-sld', { project: PROJ })); }
-  catch (e) { el.innerHTML = `<span style="color:var(--bad)">⚠ ${esc(e.message)}</span>`; }
+  catch (e) { el.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
 }
 async function downloadBundle() {
   if (!PROJ || !PROJ.circuits.length) { toast('Добавь хотя бы одну цепь'); return; }
@@ -471,13 +471,13 @@ async function downloadBundle() {
     const r = await fetch(API + '/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: PROJ }) });
     if (!r.ok) {
       const payload = await r.json().catch(() => null);
-      toast('⚠ ошибка экспорта: ' + (payload?.detail?.message || payload?.detail || `HTTP ${r.status}`));
+      toast('ошибка экспорта: ' + (payload?.detail?.message || payload?.detail || `HTTP ${r.status}`));
       return;
     }
     const name = (PROJ.board_ref || PROJ.name || 'board').replace(/\s+/g, '_') + '_пакет.zip';
     download(name, await r.blob(), 'application/zip');
     toast('Пакет документов скачан (SVG+DXF+XLSX+MD)');
-  } catch (e) { toast('⚠ ' + e.message); }
+  } catch (e) { toast('' + e.message); }
 }
 async function renderPrint() {
   const root = $('printRoot');
@@ -486,19 +486,19 @@ async function renderPrint() {
   // Always fetch a FRESH report (with the SLD) in one call — the print route reloads PROJ from
   // localStorage, so a cached _lastReport would risk printing a stale schedule beside a fresh diagram.
   try { rep = await postJSON('/api/project-report?sld=1', { project: PROJ }); }
-  catch (e) { root.innerHTML = `<p style="color:var(--bad)">⚠ ${esc(e.message)}</p>`; return; }
+  catch (e) { root.innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; return; }
   const sld = rep.sld || { svg: '' };
   const b = rep.board, t = b.totals, sp = PROJ.supply || {};
   const rows = rep.rows.map(r => `<tr><td>${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td>${esc(r.device)}</td><td>${esc(r.rcd)}</td><td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td><td>${esc(r.status)}</td></tr>`).join('');
   root.innerHTML = `
-    <div class="print-actions no-print"><button id="doPrint" class="primary">🖨 Печать / Сохранить PDF</button> <button id="printBack" class="ghost">← Назад к щиту</button></div>
+    <div class="print-actions no-print"><button id="doPrint" class="primary"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать / Сохранить PDF</button> <button id="printBack" class="ghost">← Назад к щиту</button></div>
     <h1 class="ptitle">${esc(PROJ.name)} <small>${esc(PROJ.board_ref || '')}</small></h1>
     <p class="pmeta">Питание: ${esc(sp.voltage_v || 400)} В · ${esc(sp.phases || 3)}ф · ${esc(sp.earthing || 'TN-C-S')} · мест ${b.ways.used}/${b.ways.total}</p>
     <p class="pnote">${esc(rep.data_identity || '')}</p>
     <h2>Таблица щита (panel schedule)</h2>
     <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Итоги щита</h2>
-    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' ⚠' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
+    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? '' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
     <h2>Однолинейная схема</h2>
     <div class="print-sld">${sld.svg || ''}</div>
     <p class="pnote">${esc(rep.provenance_note || '')}</p>
@@ -513,11 +513,11 @@ async function nlAddCircuit() {
   $('nlQuick').value = ''; toast('Разбираю описание…');
   try {
     const j = await postJSON('/api/intake', { text });
-    if (!j.ok) { toast('⚠ ' + (j.message || 'не удалось разобрать')); return; }
+    if (!j.ok) { toast('' + (j.message || 'не удалось разобрать')); return; }
     const c = newCircuit(j.request, { phase: j.request.load.phases === 3 ? 'L1L2L3' : 'L1', rcd: { present: false }, diversity_category: j.request.load.purpose }, 'C' + (PROJ.circuits.length + 1));
     c.sort_index = PROJ.circuits.length; PROJ.circuits.push(c); projSet(PROJ);
     go('/p/' + PROJ.id + '/c/' + c.id);
-  } catch (e) { toast('⚠ ошибка: ' + e.message); }
+  } catch (e) { toast('ошибка: ' + e.message); }
 }
 
 // ========================= EDITOR =========================
@@ -577,7 +577,7 @@ async function recompute() {
 function renderAll() {
   const r = VIZ.result; topBadge(r.overall_status);
   renderSummary(r); renderTCC(VIZ.tcc); renderSweep(VIZ.sweep); renderVD(VIZ.vd_profile); renderDerating(VIZ.derating); renderSLD(VIZ.sld); renderTrace(r);
-  const packNote = VIZ.data_provenance_note ? ('⚠ ' + VIZ.data_provenance_note) : `Норм-пакет «${r.data_pack.name}» (${r.data_pack.status}).`;
+  const packNote = VIZ.data_provenance_note ? ('' + VIZ.data_provenance_note) : `Норм-пакет «${r.data_pack.name}» (${r.data_pack.status}).`;
   $('provenance').textContent = packNote + ' Не данные производителя оборудования.';
   relayoutActive();
 }
@@ -610,46 +610,46 @@ $('recalc').addEventListener('click', recompute);
 document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phases,#f_pf,#f_purpose,#f_method,#f_material,#f_insulation,#f_ambient,#f_grouping,#f_length,#f_device,#f_curve,#f_iscc,#f_tdisc,#f_vdlimit,#f_phase,#f_rcd,#f_rcd_ma').forEach(el => el.addEventListener('change', recompute));
 
 // ---------- charts (Plotly/SVG) ----------
-const DARK = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#b8c6de', size: 12, family: "'Fira Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
+const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#42557A', size: 12, family: "'Fira Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
   const deviceOff = t.device.available === false;
   const traces = [
-    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#f4574a', width: 2.5 } },
+    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#DC2626', width: 2.5 } },
   ];
   if (!deviceOff) traces.push(
-    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4f9dff', width: 1 }, showlegend: false },
-    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4f9dff', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(79,157,255,.16)' },
+    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#1E40AF', width: 1 }, showlegend: false },
+    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#1E40AF', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(30,64,175,.12)' },
   );
   const shapes = [], anns = [];
-  vlines(shapes, t.markers.IB, '#94a4c4', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#e6ad3c', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#f4574a', 'dot', 'Iscc', anns);
-  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#94a4c4', size: 12 } });
+  vlines(shapes, t.markers.IB, '#5B6B8C', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#B45309', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#DC2626', 'dot', 'Iscc', anns);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#5B6B8C', size: 12 } });
   const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
-  Plotly.react('plot_tcc', traces, Object.assign({}, DARK, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#f4574a' : '#b8c6de' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#1b2740' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#1b2740' }, shapes, annotations: anns }), CFG);
+  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#DC2626' : '#42557A' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#DBEAFE' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#DBEAFE' }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
-  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#4f9dff' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#2b6b45' : '#2a3550'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, DARK, { title: { text: `Свип сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${s.governing})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#1b2740' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#e6ad3c', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#e6ad3c', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#1E40AF' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#4E9B6E' : '#C9D6EA'));
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Свип сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${s.governing})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B45309', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
-  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#4f9dff', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#eaf0fb', size: 9 } }], Object.assign({}, DARK, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#1b2740' }, yaxis: { title: 'ΔU, %', gridcolor: '#1b2740' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#f4574a', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#f4574a', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#1E40AF', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#0F1B33', size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#DBEAFE' }, yaxis: { title: 'ΔU, %', gridcolor: '#DBEAFE' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#DC2626', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#DC2626', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#4f9dff', '#3f74c9', '#2b6b45'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, DARK, { title: { text: `Дерейтинг: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#1b2740' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#e6ad3c', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#15803D'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Дерейтинг: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
-  if (!s) return; const col = { PASS: '#45c565', FAIL: '#f4574a', NEEDS_REVIEW: '#e6ad3c' }[s.status] || '#94a4c4';
+  if (!s) return; const col = { PASS: '#15803D', FAIL: '#DC2626', NEEDS_REVIEW: '#B45309' }[s.status] || '#5B6B8C';
   const bw = 150, gap = 46, y = 70, h = 78; let x = 20, svg = `<svg viewBox="0 0 ${20 + (bw + gap) * 4} 200" class="sld" style="max-width:100%">`;
   s.nodes.forEach((n, idx) => {
-    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#4f9dff" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#172234" stroke="${idx === s.nodes.length - 1 ? col : '#263650'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#eaf0fb" font-size="14" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#94a4c4" font-size="12" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
+    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#1E40AF" stroke-width="2"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : '#BFD3F2'}" stroke-width="2"/>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="14" font-weight="600" text-anchor="middle">${esc(n.label)}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#42557A" font-size="12" text-anchor="middle" font-family="monospace">${esc(n.sub)}</text>`;
     x += bw + gap;
   });
   svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${s.status} · связывает: ${s.governing}</text></svg>`;
@@ -674,19 +674,19 @@ $('tabs').addEventListener('click', e => {
 // ---------- copilot (editor) ----------
 function addMsg(cls, html, sub) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html + (sub ? `<small>${esc(sub)}</small>` : ''); $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight; }
 async function chatSend() {
-  const text = $('chatInput').value.trim(); if (!text) return; addMsg('user', esc(text)); $('chatInput').value = ''; addMsg('bot', '⏳ разбираю…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '⚠ ' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${p.device_class} <b>${fmt(p.In_a)} A</b>, статус <b>${VIZ.result.overall_status}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
-  catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
+  const text = $('chatInput').value.trim(); if (!text) return; addMsg('user', esc(text)); $('chatInput').value = ''; addMsg('bot', 'разбираю…'); const busy = $('chat').lastChild;
+  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${p.device_class} <b>${fmt(p.In_a)} A</b>, статус <b>${VIZ.result.overall_status}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
+  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
 }
 async function doExplain() {
-  addMsg('bot', '⏳ объясняю…'); const busy = $('chat').lastChild;
+  addMsg('bot', 'объясняю…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/explain' + packQuery(), buildRequest()); busy.remove(); const n = j.narrative; const tag = n.model ? `${n.model}; провенанс ${n.provenance_ok ? 'OK' : 'FAIL ' + JSON.stringify(n.unverified_numbers)}` : 'шаблон (без ключа)'; addMsg('bot', esc(n.text), tag); }
-  catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
 }
 async function doReview() {
-  addMsg('bot', '⏳ ревьюер проверяет…'); const busy = $('chat').lastChild;
+  addMsg('bot', 'ревьюер проверяет…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/verify' + packQuery(), buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
-  catch (e) { busy.remove(); addMsg('bot', '⚠ ' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
 }
 $('chatSend').addEventListener('click', chatSend);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) chatSend(); });
@@ -708,14 +708,14 @@ function importProject(e) {
       const validated = await postJSON('/api/project-validate', { project: p });
       const copy = deepCopyProject(validated.project, validated.project.name);
       projSet(copy); e.target.value = ''; go('/p/' + copy.id); toast('Проект импортирован');
-    } catch (err) { toast('⚠ не удалось импортировать файл: ' + err.message); }
+    } catch (err) { toast('не удалось импортировать файл: ' + err.message); }
   };
   rd.readAsText(f);
 }
 async function downloadReport() {
   toast('Готовлю отчёт по щиту…');
   try { const rep = await postJSON('/api/project-report', { project: PROJ }); download(`${(PROJ.board_ref || PROJ.name).replace(/\s+/g, '_')}_отчёт.md`, rep.markdown, 'text/markdown'); }
-  catch (e) { toast('⚠ ' + e.message); }
+  catch (e) { toast('' + e.message); }
 }
 
 // ---------- net ----------
@@ -826,7 +826,7 @@ async function createShareLink() {
       'Открыть',
       () => go('/s/' + payload.token),
     );
-  } catch (error) { toast('⚠ share-ссылка не создана: ' + error.message); }
+  } catch (error) { toast('share-ссылка не создана: ' + error.message); }
 }
 async function renderShared(token) {
   const body = $('sharedScheduleBody');
@@ -847,7 +847,7 @@ async function renderShared(token) {
     $('sharedIdentity').textContent = `${report.data_identity} ${report.provenance_note} ${report.signoff_notice} ${report.disclaimer}`;
     topBadge(report.board.status);
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="13" style="color:var(--bad)">⚠ ${esc(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="13" style="color:var(--bad)">${esc(error.message)}</td></tr>`;
     $('sharedName').textContent = 'Share-ссылка недоступна';
   }
 }
