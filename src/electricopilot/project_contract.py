@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, Literal, Mapping, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -164,6 +165,19 @@ class Project(_ProjectModel):
     circuits: list[Circuit]
     rollup: ProjectRollup | None = None
     import_info: ProjectImportInfo | None = None
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def _valid_timestamp(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("timestamp must be ISO-8601") from None
+        if parsed.tzinfo is None:
+            raise ValueError("timestamp must include a timezone")
+        return value
 
     @model_validator(mode="before")
     @classmethod

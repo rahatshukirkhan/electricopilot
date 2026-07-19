@@ -138,3 +138,15 @@ provenance_note, data_identity, signoff_notice, disclaimer, norm_pack}`.
 
 MUST (выше) на localStorage, zero-config. Fast-follow: Neon-персистентность на workspace-token,
 PDF/CSV, сквозной ΔU и каскад КЗ по под-щитам, per-project rollup подписи, наследование уставок щита.
+
+## 11.7 Neon fast-follow и share (фаза 4)
+
+Фаза 4 реализует fast-follow из §11.6 без замены offline-модели: `localStorage` остаётся первым
+местом записи, а канонический schema v2 синхронизируется с `ProjectStore` через `X-Workspace`
+после debounce 2 с. `updated_at` задаёт last-write-wins; устаревшая запись получает явный 409 и
+заменяется свежей серверной копией с уведомлением, а не затирает её молча.
+
+Маршрут `#/s/<token>` не загружает проект в локальный workspace и не показывает действия
+изменения. `GET /api/shared/{token}` возвращает проект вместе со свежим серверным отчётом, поэтому
+страница не доверяет сохранённым `circuit.result`. Полный контракт, DDL и модель угроз описаны в
+`docs/15-project-persistence.md`.

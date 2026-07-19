@@ -131,6 +131,7 @@ def test_unversioned_legacy_migration_is_pure_and_deterministic() -> None:
         (lambda p: p.update({"schema_version": 99}), "schema_version"),
         (lambda p: p["supply"].update({"mystery": True}), "supply.mystery"),
         (lambda p: p.pop("name"), "name"),
+        (lambda p: p.update({"updated_at": "not-a-timestamp"}), "updated_at"),
         (
             lambda p: p["circuits"].append(deepcopy(p["circuits"][0])),
             "circuits",
