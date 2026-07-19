@@ -80,6 +80,7 @@ function sampleProject() {
 
 // ---------- state ----------
 let PROJ = null, CID = null, VIZ = null, NORMCHECK = null, HEALTH = { mode: 'fallback' }, PACKS = [];
+let IMPORT_FILE = null, IMPORT_RESULT = null;
 function packQuery() { return PROJ?.norm_pack ? ('?pack=' + encodeURIComponent(PROJ.norm_pack)) : ''; }
 function packStatusBadge(el, pack) {
   const status = pack?.status || '';
@@ -163,12 +164,119 @@ $('btnNewProject').addEventListener('click', () => { const p = blankProject(); p
 $('btnSample').addEventListener('click', () => { const p = sampleProject(); projSet(p); go('/p/' + p.id); });
 $('dashSearch').addEventListener('input', e => renderDashboard(e.target.value));
 $('importFile').addEventListener('change', importProject);
+$('scheduleImportFile').addEventListener('change', importScheduleFile);
+$('btnImportCancel').addEventListener('click', closeScheduleImport);
+$('btnImportRemap').addEventListener('click', () => submitScheduleImport(false));
+$('btnImportCreate').addEventListener('click', createImportedProject);
+$('importConfirm').addEventListener('change', e => { $('btnImportCreate').disabled = !e.target.checked; });
 
 function deepCopyProject(p, name) {
   const c = JSON.parse(JSON.stringify(p));
   c.id = uid('prj'); c.name = name || c.name; c.created_at = c.updated_at = nowISO();
   c.circuits.forEach(ck => { ck.id = uid('ckt'); });
   return c;
+}
+
+function closeScheduleImport() {
+  IMPORT_FILE = null; IMPORT_RESULT = null;
+  $('scheduleImportFile').value = '';
+  $('importReview').hidden = true;
+}
+
+async function importScheduleFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  IMPORT_FILE = file; IMPORT_RESULT = null;
+  $('importReview').hidden = false;
+  $('importSource').textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} КиБ · разбираю…`;
+  $('importMappingBody').innerHTML = '';
+  $('importPreview').innerHTML = '';
+  $('importDiff').innerHTML = '';
+  await submitScheduleImport(false, null);
+}
+
+function currentImportMapping() {
+  if (!IMPORT_RESULT) return null;
+  const result = {};
+  document.querySelectorAll('#importMappingBody select').forEach((select, index) => {
+    result[IMPORT_RESULT.mapping[index].source_header] = select.value || null;
+  });
+  return result;
+}
+
+async function submitScheduleImport(confirmed, mapping = undefined) {
+  if (!IMPORT_FILE) return null;
+  const data = new FormData();
+  data.append('file', IMPORT_FILE);
+  const chosen = mapping === undefined ? currentImportMapping() : mapping;
+  if (chosen) data.append('mapping', JSON.stringify(chosen));
+  data.append('confirmed', confirmed ? 'true' : 'false');
+  const button = confirmed ? $('btnImportCreate') : $('btnImportRemap');
+  button.disabled = true;
+  try {
+    const response = await fetch(API + '/api/import-schedule', { method: 'POST', body: data });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.detail?.message || payload?.detail || `HTTP ${response.status}`);
+    }
+    IMPORT_RESULT = await response.json();
+    renderScheduleImport();
+    return IMPORT_RESULT;
+  } catch (error) {
+    $('importIssues').innerHTML = `<span class="import-issue">⚠ ${esc(error.message)}</span>`;
+    toast('⚠ импорт не выполнен: ' + error.message);
+    return null;
+  } finally {
+    button.disabled = false;
+    $('btnImportCreate').disabled = !$('importConfirm').checked;
+  }
+}
+
+function renderScheduleImport() {
+  const result = IMPORT_RESULT; if (!result) return;
+  $('importReview').hidden = false;
+  $('importSource').textContent = `${IMPORT_FILE.name} · ${(IMPORT_FILE.size / 1024).toFixed(1)} КиБ · ${result.project_draft.circuits.length} цепей`;
+  const options = ['<option value="">— не использовать —</option>'].concat(
+    result.canonical_fields.map(field => `<option value="${esc(field)}">${esc(field)}</option>`),
+  ).join('');
+  $('importMappingBody').innerHTML = result.mapping.map((entry, index) => `<tr>
+    <td>${esc(entry.source_header)}</td>
+    <td><select data-map-index="${index}">${options}</select></td>
+    <td class="mono dim">${esc(entry.method)}</td>
+  </tr>`).join('');
+  result.mapping.forEach((entry, index) => {
+    document.querySelector(`#importMappingBody select[data-map-index="${index}"]`).value = entry.field || '';
+  });
+
+  const shownIssues = result.issues.slice(0, 24);
+  $('importIssues').innerHTML = shownIssues.map(issue => `<span class="import-issue">${issue.row ? `строка ${issue.row}: ` : ''}${esc(issue.message)}</span>`).join('')
+    + (result.issues.length > shownIssues.length ? `<span class="import-issue">ещё ${result.issues.length - shownIssues.length}</span>` : '');
+  const previewHead = result.headers.map(header => `<th>${esc(header)}</th>`).join('');
+  const previewRows = result.preview.map(row => `<tr>${result.headers.map(header => `<td>${esc(row[header] ?? '')}</td>`).join('')}</tr>`).join('');
+  $('importPreview').innerHTML = `<table><thead><tr>${previewHead}</tr></thead><tbody>${previewRows}</tbody></table>`;
+
+  $('importDiff').innerHTML = result.diff.rows.map(row => {
+    const checks = row.checks.map(check => `${esc(check.field)}: ${fmt(check.observed)} → ${fmt(check.required)} (${esc(check.status)}${check.reason ? `, ${esc(check.reason)}` : ''})`).join('<br>');
+    return `<div class="import-diff-row ${row.status}"><b>${esc(row.circuit_ref)}</b><span class="mono">${checks}</span><span class="chip ${row.status === 'match' ? 'pass' : (row.status === 'violation' ? 'fail' : 'review')}">${esc(row.status)}</span></div>`;
+  }).join('');
+  $('importIdentity').textContent = `${result.diff.data_identity} ${result.diff.signoff_notice} ${result.diff.disclaimer}`;
+  $('importConfirm').checked = Boolean(result.assumptions_confirmed);
+  $('btnImportCreate').disabled = !$('importConfirm').checked;
+}
+
+async function createImportedProject() {
+  if (!$('importConfirm').checked) return;
+  const result = await submitScheduleImport(true);
+  if (!result || !result.assumptions_confirmed) return;
+  try {
+    const validated = await postJSON('/api/project-validate', { project: result.project_draft });
+    projSet(validated.project);
+    const projectId = validated.project.id;
+    closeScheduleImport();
+    go('/p/' + projectId);
+    toast('Щит создан после проверки mapping и assumptions');
+  } catch (error) {
+    toast('⚠ проект не прошёл каноническую проверку: ' + error.message);
+  }
 }
 
 // ========================= PROJECT / BOARD =========================

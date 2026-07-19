@@ -76,12 +76,26 @@ class ExportSettings(_ProjectModel):
     cable_margin: float = Field(1.05, ge=1)
 
 
+class CircuitImportDeclaration(_ProjectModel):
+    """Original schedule values; audit evidence only, never a sizing input."""
+
+    source_file: str = Field(min_length=1)
+    source_sheet: str | None = None
+    source_row: int = Field(ge=2)
+    raw_values: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    declared_section_mm2: float | None = Field(default=None, gt=0)
+    declared_in_a: float | None = Field(default=None, gt=0)
+    assumed_fields: list[str] = Field(default_factory=list)
+    mapping_confirmed: bool = False
+
+
 class CircuitMeta(_ProjectModel):
     phase: PhaseAssignment | None = None
     rcd: RcdSettings = Field(default_factory=RcdSettings)
     diversity_category: CircuitPurpose | str | None = None
     cores: str | None = None
     pe_section_mm2: float | None = Field(default=None, gt=0)
+    import_declaration: CircuitImportDeclaration | None = None
 
 
 class CircuitResultSnapshot(_ProjectModel):
@@ -125,6 +139,16 @@ class ProjectRollup(_ProjectModel):
     status: OverallStatus = "PASS"
 
 
+class ProjectImportInfo(_ProjectModel):
+    source_file: str = Field(min_length=1)
+    source_format: Literal["csv", "xlsx"]
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mapping: dict[str, str | None]
+    assumed_fields: list[str] = Field(default_factory=list)
+    assumptions_confirmed: bool = False
+    mapping_method: Literal["heuristic", "llm", "manual", "mixed"]
+
+
 class Project(_ProjectModel):
     schema_version: Literal[2]
     id: str = Field(min_length=1)
@@ -139,6 +163,7 @@ class Project(_ProjectModel):
     export_settings: ExportSettings = Field(default_factory=ExportSettings)
     circuits: list[Circuit]
     rollup: ProjectRollup | None = None
+    import_info: ProjectImportInfo | None = None
 
     @model_validator(mode="before")
     @classmethod
