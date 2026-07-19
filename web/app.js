@@ -11,7 +11,7 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 
 // ---------- display dictionary (docs/17): Russian labels for the electrician, technical code kept in title ----------
 // Display layer only — enum values in API/localStorage/exports/`value=` are never changed.
-const ST_LABELS = { PASS: 'Соответствует', FAIL: 'Не проходит', NEEDS_REVIEW: 'Требует проверки', UNSIGNED_ADVISORY: 'Не подписано · рекомендательно', SIGNED: 'Подписано', 'READ-ONLY': 'Только просмотр' };
+const ST_LABELS = { PASS: 'Соответствует', FAIL: 'Не проходит', NEEDS_REVIEW: 'Требует проверки', UNSIGNED_ADVISORY: 'Не подписано · рекомендательно', SIGNED: 'Подписано', VERIFIED: 'Проверено', 'READ-ONLY': 'Только просмотр' };
 const GOV_LABELS = { overload_coordination: 'координация по перегрузке', short_circuit: 'термическая стойкость к КЗ', voltage_drop: 'падение напряжения' };
 const PACK_LABELS = { 'iec-stub': 'IEC 60364 (демо-данные)', 'pue-rk': 'ПУЭ РК (adilet)' };
 const SEV_LABELS = { error: 'ошибка', warning: 'предупреждение', info: 'инфо' };            // normcheck severity
@@ -113,7 +113,8 @@ function packStatusBadge(el, pack) {
   const status = pack?.status || '';
   const origin = { illustrative: 'синтетические', public_standard: 'публичный стандарт', licensed: 'лицензия' }[status] || status;
   const verification = pack?.verification_status || 'NEEDS_REVIEW';
-  el.textContent = [origin, verification].filter(Boolean).join(' · ');
+  el.textContent = [origin, stLabel(verification)].filter(Boolean).join(' · ');
+  el.title = verification;
   el.className = 'badge small ' + (verification === 'VERIFIED' ? 'pass' : 'review');
 }
 
