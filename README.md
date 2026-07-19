@@ -74,6 +74,7 @@ cp .env.example .env         # затем вписать OPENROUTER_API_KEY и/�
 | `ELECTRICOPILOT_MODEL_STRONG` / `_FAST` | `google/gemini-3.1-pro-preview` / `google/gemini-3-flash-preview` |
 | `DATABASE_URL` | Neon/Postgres; пусто → аудит JSONL, проекты только в localStorage |
 | `ELECTRICOPILOT_STRICT_PROVENANCE` | строгий провенанс (по умолчанию `true`) |
+| `ELECTRICOPILOT_BUILD_IDENTITY` | воспроизводимая identity сборки для CalculationManifest; на Vercel fallback — `VERCEL_GIT_COMMIT_SHA` |
 
 ### Neon-проекты и share-ссылки
 
@@ -106,6 +107,10 @@ uv run electricopilot size --power 4600 --voltage 230 --phases 1 --method C \
 # из JSON-запроса, с объяснением, проверкой и подписью:
 uv run electricopilot size --request req.json --explain --verify \
     --sign "И. Иванов <KZ-EE-1234>" --format md --out report.md
+
+# offline-проверка manifest.json из документного ZIP:
+uv run electricopilot verify-manifest --manifest manifest.json \
+    --project project.json --data-pack iec-stub
 
 # показать доступные slug'и Gemini (нужен ключ):
 uv run electricopilot models
@@ -222,6 +227,15 @@ L1 с тем же напряжением. Report и экспорт исполь�
 перекос фаз помечается неприменимым, а не PASS/нарушением. Для ручного демо импортируй копию
 sample-проекта с 1ф питанием и одной L1-цепью, запусти report/нормоконтроль/пакет, затем смени
 `meta.phase` на `L2`: API должен вернуть типизированный HTTP 422 без частичного расчёта.
+
+### Идентичность расчёта
+
+Project-report, normcheck, R11, read-only share и документы возвращают один
+`CalculationManifest`/`calculation_id`. SHA-256 считается по эффективному инженерному вводу и
+полному валидированному норм-паку; недоверенный `circuit.result`, wall-clock и подпись в digest не
+входят. ZIP содержит `manifest.json`, `calculation-input.json` и `norm-pack.json` для offline
+сверки. Это проверка целостности, а не инженерная подпись: `UNSIGNED_ADVISORY` сохраняется.
+Полный контракт — [`docs/18-calculation-identity.md`](docs/18-calculation-identity.md).
 
 **Деплой на Vercel (статический фронтенд + Python-serverless бэкенд):**
 Репозиторий уже содержит `vercel.json`, `api/index.py`, `requirements.txt`.

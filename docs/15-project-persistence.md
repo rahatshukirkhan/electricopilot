@@ -44,7 +44,8 @@ Share-токен создаётся системным криптографич�
 
 Shared endpoint заново вызывает `build_project_report`; сохранённые инженерные snapshots не
 являются источником истины. Ответ сохраняет identity/verification норм-пака, provenance,
-дисклеймер и `UNSIGNED_ADVISORY`.
+дисклеймер, единый `CalculationManifest`/`calculation_id` из `docs/18` и
+`UNSIGNED_ADVISORY`.
 
 Без `DATABASE_URL` project/share API возвращают HTTP 503 с `error=no_db`, а Studio продолжает
 работу из `localStorage`. Пустой `X-Workspace` даёт `workspace_required`, чужой/неизвестный id —

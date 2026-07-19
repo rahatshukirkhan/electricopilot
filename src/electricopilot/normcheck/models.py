@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..calculation_manifest import CalculationManifest
 from ..data.loader import DataPack
 from ..models import Citation, LlmNarrative, SizingRequest, SizingResult
 
@@ -46,6 +47,8 @@ class NormcheckReport(BaseModel):
     norm_pack: dict[str, str]
     data_provenance: dict[str, Any]
     data_identity: str
+    calculation_id: str
+    calculation_manifest: CalculationManifest
     provenance_note: str
     disclaimer: str
     signoff_notice: str

@@ -80,13 +80,19 @@ POST /api/project-export  {project} → application/zip          (пакет; и
 
 ## 13.7 Пакет (zip)
 
-`report.md`, `sld.svg`, `sld.dxf`, `cable_journal.xlsx`, `boq.xlsx`, `project.json`
+`report.md`, `sld.svg`, `sld.dxf`, `cable_journal.xlsx`, `boq.xlsx`, `project.json`,
+`manifest.json`, `calculation-input.json`, `norm-pack.json`
 (много листов → добавляются `sld-2.*`, `sld-3.* …`). Каждый документ несёт дисклеймер и
 провенанс-ноту пакета данных, его имя/версию/статус проверки, дисклеймер и
 `UNSIGNED_ADVISORY`. Даты zip-записей фиксированы; `report.md`, SVG и XLSX
 байт-детерминированы (у XLSX openpyxl-таймстампы нормализуются `xlsx._normalize_xlsx`). Только
 DXF недетерминирован (ezdxf вшивает свои GUID/таймстампы), поэтому архив целиком не
 байт-идентичен между запусками.
+
+`manifest.json` следует `docs/18`: короткий `calculation_id` также печатается в MD, SVG/DXF и
+примечаниях XLSX. SHA-256 двух канонических входных JSON позволяет проверить расчётный ввод и
+пак offline; исходный `project.json` остаётся round-trip артефактом и может содержать недоверенный
+UI snapshot, который не участвует в идентичности.
 
 ## 13.8 Ограничения (осознанные)
 

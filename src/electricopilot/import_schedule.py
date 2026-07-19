@@ -17,6 +17,11 @@ from uuid import uuid4
 from openpyxl import load_workbook
 from pydantic import BaseModel
 
+from .calculation_manifest import (
+    CalculationManifest,
+    build_calculation_manifest,
+    manifest_data_identity,
+)
 from .data.loader import DataPack
 from .engine import size
 from .exceptions import LlmConfigError, LlmError
@@ -112,6 +117,8 @@ class ImportDiffReport(BaseModel):
     rows: list[ImportDiffRow]
     summary: dict[str, int]
     data_identity: str
+    calculation_id: str
+    calculation_manifest: CalculationManifest
     disclaimer: str = DISCLAIMER
     signoff_notice: str = (
         "UNSIGNED_ADVISORY — требуется проверка и подпись квалифицированного инженера."
@@ -698,13 +705,13 @@ def build_import_diff(project: Project | Mapping[str, Any], pack: DataPack) -> I
         ))
     summary = {name: sum(row.status == name for row in rows)
                for name in ("match", "violation", "not_checked")}
+    manifest = build_calculation_manifest(canonical, pack)
     return ImportDiffReport(
         rows=rows,
         summary=summary,
-        data_identity=(
-            f"Норм-пакет: {pack.meta.name} v{pack.meta.version}; "
-            f"происхождение: {pack.meta.status}."
-        ),
+        data_identity=manifest_data_identity(manifest),
+        calculation_id=manifest.calculation_id,
+        calculation_manifest=manifest,
     )
 
 

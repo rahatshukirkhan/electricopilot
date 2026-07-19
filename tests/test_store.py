@@ -127,6 +127,10 @@ def test_project_api_covers_crud_conflict_workspace_and_shared_report(
     assert payload["project"]["id"] == project.id
     assert payload["report"]["rows"] == []
     assert "UNSIGNED_ADVISORY" in payload["report"]["signoff_notice"]
+    assert payload["report"]["calculation_id"].startswith("calc-v1-")
+    assert payload["report"]["calculation_manifest"]["calculation_id"] == (
+        payload["report"]["calculation_id"]
+    )
 
     deleted = client.delete(f"/api/projects/{project.id}", headers=_headers())
     assert deleted.json() == {"ok": True}

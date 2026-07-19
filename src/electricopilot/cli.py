@@ -1,12 +1,14 @@
 """Typer CLI for ElectriCopilot (docs/03 §3.8)."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
 
+from .calculation_manifest import CalculationManifest, verify_calculation_manifest
 from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .llm.client import OpenRouterClient
@@ -22,6 +24,7 @@ from .models import (
 )
 from .persistence import persist
 from .pipeline import run
+from .project_contract import validate_project
 from .report import render_json, render_markdown
 
 app = typer.Typer(add_completion=False, help="ElectriCopilot — аудируемый подбор кабеля и защиты (IEC 60364).")
@@ -156,6 +159,31 @@ def packs() -> None:
             f"{meta.name:16} {meta.version:8} {meta.status:16} "
             f"{assessment.verification_status:14} {meta.source_note}"
         )
+
+
+@app.command("verify-manifest")
+def verify_manifest_command(
+    manifest: str = typer.Option(..., "--manifest", help="manifest.json"),
+    project: str = typer.Option(..., "--project", help="project.json"),
+    data_pack: Optional[str] = typer.Option(None, "--data-pack", help="имя или JSON норм-пака"),
+    build_identity: Optional[str] = typer.Option(
+        None, "--build-identity", help="ожидаемая identity сборки; иначе окружение",
+    ),
+) -> None:
+    """Offline-проверка CalculationManifest по проекту и норм-паку."""
+    manifest_value = CalculationManifest.model_validate_json(
+        Path(manifest).read_text(encoding="utf-8")
+    )
+    project_value = validate_project(json.loads(Path(project).read_text(encoding="utf-8")))
+    result = verify_calculation_manifest(
+        manifest_value,
+        project_value,
+        _load_pack(data_pack or project_value.norm_pack),
+        build_identity=build_identity,
+    )
+    typer.echo(result.model_dump_json(indent=2))
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 @app.command()
