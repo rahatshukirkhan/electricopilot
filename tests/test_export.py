@@ -49,7 +49,7 @@ def _board(n_circuits=3):
         _circuit("c3", "L3", "Бойлер", 3000, U=230, L=20, rcd=True, phase="L3"),
     ][:n_circuits]
     return {
-        "name": "Щит ВРУ-1 (пример)", "board_ref": "DB-1",
+        "id": "project-export", "name": "Щит ВРУ-1 (пример)", "board_ref": "DB-1",
         "export_settings": {"cable_margin": 1.05},
         "supply": {"voltage_v": 400, "phases": 3, "ways_total": 12, "earthing": "TN-C-S"},
         "circuits": circuits,

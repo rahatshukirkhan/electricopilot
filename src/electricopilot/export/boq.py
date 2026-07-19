@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..project_contract import ProjectInput
 from .cable_journal import cable_margin
 from .tables import Table, fmt_num as _fmt
 
@@ -27,7 +28,7 @@ def _cable_name(spec: dict[str, Any]) -> str:
             f"{spec.get('material', '')}/{spec.get('insulation', '')} · метод {spec.get('method', '')}")
 
 
-def build_boq(project: dict[str, Any], report: dict[str, Any]) -> Table:
+def build_boq(project: ProjectInput, report: dict[str, Any]) -> Table:
     margin = cable_margin(project)
     devices: dict[str, int] = {}
     cables: dict[str, float] = {}

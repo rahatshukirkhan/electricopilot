@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..project_contract import ProjectInput, project_payload
 from .primitives import Drawing, Line, Text
 from .svg import render_svg
 from .tables import fmt_num as _fmt
@@ -80,12 +81,13 @@ def _draw_circuit(d: Drawing, x: float, row: dict[str, Any]) -> None:
                height=2.2, anchor="middle", color=color))
 
 
-def build_sld(project: dict[str, Any], report: dict[str, Any]) -> list[Drawing]:
+def build_sld(project: ProjectInput, report: dict[str, Any]) -> list[Drawing]:
     """One Drawing per sheet. Empty board → a single sheet with just the frame."""
+    data = project_payload(project)
     rows = report.get("rows", []) or []
     chunks = [rows[i:i + MAX_PER_SHEET] for i in range(0, len(rows), MAX_PER_SHEET)] or [[]]
-    name = str(project.get("name", "") or "")
-    board_ref = str(project.get("board_ref", "") or "")
+    name = str(data["name"])
+    board_ref = str(data["board_ref"])
 
     sheets: list[Drawing] = []
     for si, chunk in enumerate(chunks):
@@ -95,7 +97,7 @@ def build_sld(project: dict[str, Any], report: dict[str, Any]) -> list[Drawing]:
             title=f"{name} · {board_ref}".strip(" ·"),
             subtitle=f"Однолинейная схема · лист {si + 1}/{len(chunks)}"))
         d.extend(symbols.bus(BUS_X0, BUS_X1, BUS_Y))
-        d.extend(_input_feed(project))
+        d.extend(_input_feed(data))
 
         n = len(chunk)
         col_span = BUS_X1 - (BUS_X0 + 22.0)
@@ -118,5 +120,5 @@ def _draw_footer(d: Drawing, report: dict[str, Any]) -> None:
                str(report.get("data_identity", "")), height=1.65, anchor="start", color="#556"))
 
 
-def sld_sheets_svg(project: dict[str, Any], report: dict[str, Any]) -> list[str]:
+def sld_sheets_svg(project: ProjectInput, report: dict[str, Any]) -> list[str]:
     return [render_svg(d) for d in build_sld(project, report)]

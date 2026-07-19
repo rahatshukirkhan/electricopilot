@@ -29,6 +29,47 @@
 - **Circuit**: `{id, ref, sort_index, request(SizingRequest), meta{phase,rcd{present,ma,type},diversity_category,cores}, result{status,section,In,IB,Iz,vd,governing}, signoff{status,engineer,license,signed_at,ack_illustrative}}`.
 - **meta** — только для щита/отчёта, движок их не использует (не меняем `models`/`engine`).
 
+### Версионированный контракт проекта
+
+Канонический формат `.ecproj.json` имеет `schema_version: 2`. Единственный Python-контракт
+находится в `project_contract.py` и состоит из Pydantic-моделей `Project`, `ProjectSupply`,
+`Circuit`, `CircuitMeta`, `DiversitySettings` и `ExportSettings`; поле `Circuit.request`
+не дублирует инженерные поля, а использует замороженный `SizingRequest` из `models.py`.
+
+Обязательны `schema_version`, `id`, `name`, `board_ref`, `supply`, `circuits`, а у каждой
+цепи — уникальные в пределах проекта `id`, `sort_index` и `request`. Пустые строки для
+идентификаторов и имён запрещены. `location`, `norm_pack`, временные метки, `diversity`,
+`export_settings`, `meta`, клиентский снимок `result` и `signoff` опциональны либо имеют
+явный безопасный default. Клиентский `result` остаётся только снимком UI: расчёт, экспорт и
+нормоконтроль его не используют.
+
+Project-owned модели работают с `extra="forbid"`: неизвестное поле не отбрасывается молча,
+а даёт `invalid_project_contract` с путём поля. Вложенный `SizingRequest` сохраняет собственный
+замороженный контракт docs/03. Неизвестная будущая `schema_version` также отклоняется — сервер
+не интерпретирует её как v2.
+
+Единственная legacy-миграция принимает проект без `schema_version` как v1, копирует вход без
+мутаций, ставит `schema_version=2`, нумерует отсутствующие `sort_index` порядком цепей и
+сохраняет принятые ранее defaults топологии (`supply.phases=3`, `supply.voltage_v=400`). Она не
+создаёт id, не меняет инженерные значения и не исправляет неоднозначные поля. Старый массив
+`ec_circuits` сначала преобразуется существующей клиентской миграцией в проект v2. Импорт
+`.ecproj.json` вызывает `POST /api/project-validate`, получает каноническую сериализацию и
+только затем создаёт новые id и записывает проект в localStorage.
+
+Все проектные API принимают один `Project`; report, normcheck и экспорт получают либо этот
+typed-объект, либо его стабильный `model_dump(mode="json")`. Ошибка схемы возвращается до
+`size()`, нормоконтроля или генерации ZIP как HTTP 422:
+
+```json
+{
+  "detail": {
+    "code": "invalid_project_contract",
+    "path": "project.circuits.0.request.load.voltage_v",
+    "message": "Некорректный проект: ..."
+  }
+}
+```
+
 ### Топология питания щита
 
 `supply.phases` допускает только `1 | 3`, `supply.voltage_v` — положительное напряжение
@@ -76,9 +117,14 @@ provenance_note, data_identity, signoff_notice, disclaimer, norm_pack}`.
 секций пакета (`DataPack.assess_provenance`, docs/04 §4.6), а не только от `meta.status` (docs/12
 §1.1): `VERIFIED` разрешён только при полной атрибуции и записи реального проверяющего.
 
+`POST /api/project-validate` — валидирует/мигрирует проект без расчёта и возвращает
+`{project: <canonical schema v2>}`. Endpoint используется импортом `.ecproj.json`; он не
+доверяет клиентскому `result` и не запускает инженерное ядро.
+
 ## 11.5 Экспорт / доверие
 
-- **`.ecproj.json`** — раунд-трип проекта (импорт создаёт новый проект с новыми id) — бэкап/передача без логина.
+- **`.ecproj.json`** — канонический schema v2 раунд-трип проекта (импорт сначала проходит
+  серверную миграцию/валидацию и создаёт новый проект с новыми id) — бэкап/передача без логина.
 - **Проектный отчёт** (Markdown/print): обложка(щит+уставки+дисклеймер), таблица щита+тоталы,
   подетальная трасса каждой цепи, блок подписи (per-circuit + проект).
 - **Доверие в UI:** постоянная плашка «рекомендательно · синтетические значения · реальные ссылки

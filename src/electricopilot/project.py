@@ -13,6 +13,7 @@ from typing import Any
 from .data.loader import DataPack, load_data_pack
 from .engine import size
 from .models import DISCLAIMER, SizingRequest, provenance_note_for
+from .project_contract import ProjectInput, project_payload
 from .topology import incomer_current_a, phase_imbalance_pct, validate_project_topology
 
 _DEFAULT_DIVERSITY = {  # ILLUSTRATIVE (synthetic) demand factors by load category
@@ -51,12 +52,17 @@ def _rcd_str(meta: dict[str, Any]) -> str:
     return f"{rcd.get('type', 'RCD')} {rendered}мА"
 
 
-def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None = None) -> dict[str, Any]:
-    pack = data_pack or load_data_pack(project.get("norm_pack"))
-    topology = validate_project_topology(project)
-    supply = project.get("supply") or {}
-    ways_total = int(supply.get("ways_total", max(12, len(project.get("circuits", [])))) or 12)
-    diversity = {**_DEFAULT_DIVERSITY, **(project.get("diversity", {}) or {}).get("factors", {})}
+def build_project_report(
+    project: ProjectInput,
+    *,
+    data_pack: DataPack | None = None,
+) -> dict[str, Any]:
+    data = project_payload(project)
+    pack = data_pack or load_data_pack(data.get("norm_pack"))
+    topology = validate_project_topology(data)
+    supply = data["supply"]
+    ways_total = int(supply["ways_total"])
+    diversity = {**_DEFAULT_DIVERSITY, **data["diversity"]["factors"]}
 
     rows: list[dict[str, Any]] = []
     counts = {"PASS": 0, "FAIL": 0, "NEEDS_REVIEW": 0}
@@ -65,7 +71,7 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     used_provenance_sections: set[str] = set()
 
     for c, circuit_topology in zip(
-        project.get("circuits", []), topology.circuits, strict=True,
+        data["circuits"], topology.circuits, strict=True,
     ):
         meta = c.get("meta", {}) or {}
         req = circuit_topology.request
@@ -120,7 +126,7 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     imbalance = phase_imbalance_pct(phase_a, topology.supply)
     emd_kva = emd_kw / 0.9 if emd_kw else 0.0  # nominal pf 0.9 for the estimate
     incomer_md_a = incomer_current_a(emd_kva, topology.supply)
-    used = len(project.get("circuits", []))
+    used = len(data["circuits"])
     data_provenance = (
         pack.assess_provenance(sorted(used_provenance_sections))
         if used_provenance_sections
@@ -159,7 +165,7 @@ def build_project_report(project: dict[str, Any], *, data_pack: DataPack | None 
     return {
         "board": board, "rows": rows,
         "markdown": _render_markdown(
-            project, board, rows, provenance_note, data_identity, signoff_notice
+            data, board, rows, provenance_note, data_identity, signoff_notice
         ),
         "data_provenance": data_provenance.model_dump(),
         "provenance_note": provenance_note, "disclaimer": DISCLAIMER,

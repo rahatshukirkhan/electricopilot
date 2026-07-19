@@ -12,16 +12,24 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from .config import get_config
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
-from .exceptions import DataPackError, LlmConfigError, LlmError, ProjectTopologyError
+from .exceptions import (
+    DataPackError,
+    LlmConfigError,
+    LlmError,
+    ProjectContractError,
+    ProjectTopologyError,
+)
 from .export import build_bundle, build_sld
 from .export.svg import render_svg
 from .guardrails import check_numeric_provenance
@@ -32,10 +40,35 @@ from .llm.verify import verify_deterministic_check, verify_review
 from .models import SizingRequest, SizingResult, VerificationVerdict
 from .normcheck import build_normcheck_report, narrate_findings
 from .project import build_project_report
+from .project_contract import Project, project_payload
 from .viz import build_visuals
 
 app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
               description="Auditable AI workbench for electrical design (IEC 60364). Advisory only.")
+
+
+@app.exception_handler(RequestValidationError)
+async def _typed_project_validation_error(
+    request: Request,
+    exc: RequestValidationError,
+) -> Response:
+    """Project bodies expose one stable code/path instead of FastAPI's generic error list."""
+    for problem in exc.errors():
+        location = problem.get("loc", ())
+        if len(location) >= 2 and location[0] == "body" and location[1] == "project":
+            path = ".".join(str(part) for part in location[1:])
+            message = str(problem.get("msg", "validation failed"))
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": ProjectContractError.code,
+                        "path": path,
+                        "message": f"Некорректный проект: {message}",
+                    }
+                },
+            )
+    return await request_validation_exception_handler(request, exc)
 
 
 def _allowed_origins() -> list[str]:
@@ -117,6 +150,11 @@ def _catch_project_error(fn: Any, *args: Any, **kwargs: Any) -> Any:
             status_code=422,
             detail={"code": exc.code, "message": str(exc)},
         ) from None
+    except ProjectContractError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": exc.code, "path": exc.path, "message": str(exc)},
+        ) from None
 
 
 @app.post("/api/size", response_model=SizingResult)
@@ -177,17 +215,17 @@ def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[
 
 
 class ProjectBody(BaseModel):
-    project: dict[str, Any]
+    project: Project
 
 
-def _report_for(project: dict[str, Any]) -> dict[str, Any]:
-    pack = _pack_or_400(project.get("norm_pack"))
+def _report_for(project: Project) -> dict[str, Any]:
+    pack = _pack_or_400(project.norm_pack)
     return _catch_project_error(  # type: ignore[no-any-return]
         build_project_report, project, data_pack=pack,
     )
 
 
-def _sld_preview(project: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+def _sld_preview(project: Project, report: dict[str, Any]) -> dict[str, Any]:
     """First-sheet SVG + sheet count. Only sheet 0 is rendered — the preview/print show one
     sheet; the full multi-sheet set lives in the export bundle (docs/13)."""
     sheets = build_sld(project, report)
@@ -206,10 +244,16 @@ def project_report_endpoint(body: ProjectBody, sld: bool = False) -> dict[str, A
     return report
 
 
+@app.post("/api/project-validate")
+def project_validate_endpoint(body: ProjectBody) -> dict[str, dict[str, Any]]:
+    """Migrate/validate a project without running sizing, normcheck, or export."""
+    return {"project": project_payload(body.project)}
+
+
 @app.post("/api/normcheck")
 def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
     """Run deterministic R01-R10 over fresh server-side board calculations (docs/14)."""
-    pack = _pack_or_400(body.project.get("norm_pack"))
+    pack = _pack_or_400(body.project.norm_pack)
     report = _catch_project_error(build_normcheck_report, body.project, pack)
     cfg = get_config()
     if cfg.llm_available:
@@ -223,8 +267,8 @@ def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
     return report.model_dump()  # type: ignore[no-any-return]
 
 
-def _safe_filename(project: dict[str, Any]) -> str:
-    base = str(project.get("board_ref") or project.get("name") or "board")
+def _safe_filename(project: Project) -> str:
+    base = str(project.board_ref or project.name or "board")
     return re.sub(r"[^\w.-]+", "_", base).strip("_") or "board"
 
 
@@ -237,7 +281,7 @@ def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
 @app.post("/api/project-export")
 def project_export_endpoint(body: ProjectBody) -> Response:
     """Full document package as a downloadable zip (docs/13)."""
-    pack = _pack_or_400(body.project.get("norm_pack"))
+    pack = _pack_or_400(body.project.norm_pack)
     data: bytes = _catch_project_error(build_bundle, body.project, data_pack=pack)
     # HTTP headers are latin-1; RFC 5987 filename* must be percent-encoded UTF-8 (the board
     # ref can be Cyrillic), with an ASCII filename= fallback for old clients.
