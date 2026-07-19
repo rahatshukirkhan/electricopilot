@@ -349,7 +349,7 @@ function renderTotals(b, targetId = 'boardTotals') {
   const phaseKeys = b.topology?.phases === 1 ? ['L1'] : ['L1', 'L2', 'L3'];
   const mx = Math.max(...phaseKeys.map(k => ph[k].A), 1);
   const imbalance = t.imbalance_applicable
-    ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? '' : ''}`
+    ? `перекос ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' — выше нормы' : ''}`
     : 'однофазный щит · перекос неприменим (R05)';
   const phaseTitle = b.topology?.phases === 1 ? 'Фазный ток (реальный)' : 'Баланс фаз (реальный)';
   $(targetId).innerHTML = `
@@ -498,7 +498,7 @@ async function renderPrint() {
     <h2>Таблица щита (panel schedule)</h2>
     <table class="ptable"><thead><tr><th>Ref</th><th>Описание</th><th>кВт</th><th>Фаза</th><th>IB,A</th><th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Итоги щита</h2>
-    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? '' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
+    <p class="pmeta">Подключённая нагрузка: <b>${fmt(t.connected_kw)} кВт / ${fmt(t.connected_kva)} кВА</b> · ${t.imbalance_applicable ? `перекос фаз ${fmt(t.imbalance_pct, 0)}%${t.imbalance_flag ? ' — выше нормы' : ''}` : 'однофазный щит, перекос фаз неприменим'} · резерв мест ${b.ways.spare}/${b.ways.total}</p>
     <h2>Однолинейная схема</h2>
     <div class="print-sld">${sld.svg || ''}</div>
     <p class="pnote">${esc(rep.provenance_note || '')}</p>
