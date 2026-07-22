@@ -21,6 +21,15 @@ def _bool(name: str, default: bool) -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 @dataclass(frozen=True)
 class Config:
     openrouter_api_key: str
@@ -32,6 +41,13 @@ class Config:
     database_url: str
     strict_provenance: bool
     llm_timeout: int
+    max_request_bytes: int = 2 * 1024 * 1024
+    max_project_circuits: int = 128
+    max_concurrent_heavy_operations: int = 2
+    llm_admission_mode: str = "local"
+    llm_requests_per_window: int = 12
+    llm_global_requests_per_window: int = 24
+    llm_window_seconds: int = 60
 
     @property
     def llm_available(self) -> bool:
@@ -43,6 +59,11 @@ class Config:
 
 
 def get_config() -> Config:
+    # A process-local limiter is not a security control in serverless.  On Vercel,
+    # live LLM is therefore disabled until the owner deliberately supplies a
+    # distributed perimeter policy (docs/19); local runs retain bounded test/dev use.
+    default_admission = "disabled" if os.environ.get("VERCEL") == "1" else "local"
+    configured_admission = os.environ.get("ELECTRICOPILOT_LLM_ADMISSION_MODE", "").strip().lower()
     return Config(
         openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", "").strip(),
         openrouter_base_url=os.environ.get(
@@ -56,5 +77,16 @@ def get_config() -> Config:
         ),
         database_url=os.environ.get("DATABASE_URL", "").strip(),
         strict_provenance=_bool("ELECTRICOPILOT_STRICT_PROVENANCE", True),
-        llm_timeout=int(os.environ.get("ELECTRICOPILOT_LLM_TIMEOUT", "60")),
+        llm_timeout=_positive_int("ELECTRICOPILOT_LLM_TIMEOUT", 60),
+        max_request_bytes=_positive_int("ELECTRICOPILOT_MAX_REQUEST_BYTES", 2 * 1024 * 1024),
+        max_project_circuits=_positive_int("ELECTRICOPILOT_MAX_PROJECT_CIRCUITS", 128),
+        max_concurrent_heavy_operations=_positive_int(
+            "ELECTRICOPILOT_MAX_CONCURRENT_HEAVY_OPERATIONS", 2
+        ),
+        llm_admission_mode=configured_admission or default_admission,
+        llm_requests_per_window=_positive_int("ELECTRICOPILOT_LLM_REQUESTS_PER_WINDOW", 12),
+        llm_global_requests_per_window=_positive_int(
+            "ELECTRICOPILOT_LLM_GLOBAL_REQUESTS_PER_WINDOW", 24
+        ),
+        llm_window_seconds=_positive_int("ELECTRICOPILOT_LLM_WINDOW_SECONDS", 60),
     )

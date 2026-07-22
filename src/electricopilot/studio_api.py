@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -19,9 +20,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from .config import get_config
+from .admission import admission, rejected
 from .copilot import CopilotRequest, run_copilot
 from .data.loader import DataPack, list_packs, load_data_pack
 from .engine import size
@@ -55,6 +57,38 @@ from .viz import build_visuals
 
 app = FastAPI(title="ElectriCopilot Studio", version="0.1.0",
               description="Auditable AI workbench for electrical design (IEC 60364). Advisory only.")
+
+
+@app.middleware("http")
+async def request_size_limit(request: Request, call_next: Any) -> Response:
+    """Reject declared oversized input before FastAPI parses it or an endpoint allocates ZIP.
+
+    HTTP/1.1 clients without a Content-Length are rejected for body-bearing methods:
+    streaming them into a public JSON/multipart API would defeat a pre-allocation bound.
+    """
+    if request.method in {"POST", "PUT", "PATCH"}:
+        raw_length = request.headers.get("content-length")
+        if raw_length is None:
+            return JSONResponse(
+                status_code=411,
+                content={"detail": {"ok": False, "error": "content_length_required",
+                                    "message": "Для запроса требуется Content-Length."}},
+            )
+        try:
+            length = int(raw_length)
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": {"ok": False, "error": "invalid_content_length",
+                                    "message": "Некорректный Content-Length."}},
+            )
+        if length < 0 or length > getattr(get_config(), "max_request_bytes", 2 * 1024 * 1024):
+            return JSONResponse(
+                status_code=413,
+                content={"detail": {"ok": False, "error": "request_too_large",
+                                    "message": "Размер запроса превышает допустимый лимит."}},
+            )
+    return cast(Response, await call_next(request))
 
 
 @app.exception_handler(RequestValidationError)
@@ -102,11 +136,33 @@ if _origins:
 
 
 class IntakeBody(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=8000)
 
 
 def _client() -> OpenRouterClient:
     return OpenRouterClient(get_config())
+
+
+def _admit_llm(request: Request) -> None:
+    rejection = admission.admit_llm(request, get_config())
+    if rejection is not None:
+        raise rejected(rejection)
+
+
+@contextmanager
+def _heavy_operation() -> Any:
+    """Bound one process's costly calculations; Vercel perimeter remains separate."""
+    if not admission.acquire_heavy(get_config()):
+        raise HTTPException(
+            status_code=429,
+            detail={"ok": False, "error": "heavy_concurrency",
+                    "message": "Слишком много тяжёлых операций. Повторите позже."},
+            headers={"Retry-After": "1"},
+        )
+    try:
+        yield
+    finally:
+        admission.release_heavy()
 
 
 @app.get("/api/health")
@@ -179,11 +235,12 @@ def viz_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str
 
 
 @app.post("/api/intake")
-def intake_endpoint(body: IntakeBody) -> dict[str, Any]:
+def intake_endpoint(body: IntakeBody, request: Request) -> dict[str, Any]:
     cfg = get_config()
     if not cfg.llm_available:
         return {"ok": False, "error": "no_key",
                 "message": "OPENROUTER_API_KEY не задан на сервере — NL-разбор недоступен."}
+    _admit_llm(request)
     try:
         req = intake_parse(body.text, _client(), model=cfg.model_fast)
         return {"ok": True, "request": req.model_dump(), "model": cfg.model_fast}
@@ -194,10 +251,11 @@ def intake_endpoint(body: IntakeBody) -> dict[str, Any]:
 
 
 @app.post("/api/explain")
-def explain_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
+def explain_endpoint(request: SizingRequest, http_request: Request, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
     result = _catch_pack_error(size, request, data_pack=_pack_or_400(pack))
     if cfg.llm_available:
+        _admit_llm(http_request)
         try:
             narrative = explain_render(result, _client(), model=cfg.model_fast)
             ok, unv = check_numeric_provenance(narrative.text, result, strict=cfg.strict_provenance)
@@ -210,11 +268,12 @@ def explain_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict
 
 
 @app.post("/api/verify")
-def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[str, Any]:
+def verify_endpoint(request: SizingRequest, http_request: Request, pack: Optional[str] = None) -> dict[str, Any]:
     cfg = get_config()
     result = _catch_pack_error(size, request, data_pack=_pack_or_400(pack))
     det_ok = verify_deterministic_check(request, result)
     if cfg.llm_available:
+        _admit_llm(http_request)
         try:
             verdict = verify_review(request, result, _client(), model=cfg.model_strong)
         except (LlmConfigError, LlmError):
@@ -228,9 +287,15 @@ def verify_endpoint(request: SizingRequest, pack: Optional[str] = None) -> dict[
 class ProjectBody(BaseModel):
     project: Project
 
+    @model_validator(mode="after")
+    def _bounded_circuits(self) -> "ProjectBody":
+        if len(self.project.circuits) > getattr(get_config(), "max_project_circuits", 128):
+            raise ValueError("project exceeds configured circuit limit")
+        return self
+
 
 @app.post("/api/copilot")
-def copilot_endpoint(body: CopilotRequest) -> dict[str, Any]:
+def copilot_endpoint(body: CopilotRequest, request: Request) -> dict[str, Any]:
     """Return a bounded, read-only Copilot proposal; never write ProjectStore."""
     cfg = get_config()
     if not cfg.llm_available:
@@ -247,6 +312,7 @@ def copilot_endpoint(body: CopilotRequest) -> dict[str, Any]:
             "incomplete": False,
             "error": "no_key",
         }
+    _admit_llm(request)
     response = run_copilot(
         body.project,
         body.message,
@@ -398,9 +464,10 @@ def project_shared_endpoint(token: str) -> dict[str, Any]:
 
 def _report_for(project: Project) -> dict[str, Any]:
     pack = _pack_or_400(project.norm_pack)
-    return _catch_project_error(  # type: ignore[no-any-return]
-        build_project_report, project, data_pack=pack,
-    )
+    with _heavy_operation():
+        return _catch_project_error(  # type: ignore[no-any-return]
+            build_project_report, project, data_pack=pack,
+        )
 
 
 def _sld_preview(project: Project, report: dict[str, Any]) -> dict[str, Any]:
@@ -429,12 +496,14 @@ def project_validate_endpoint(body: ProjectBody) -> dict[str, dict[str, Any]]:
 
 
 @app.post("/api/normcheck")
-def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
+def normcheck_endpoint(body: ProjectBody, request: Request) -> dict[str, Any]:
     """Run deterministic R01-R10 over fresh server-side board calculations (docs/14)."""
     pack = _pack_or_400(body.project.norm_pack)
-    report = _catch_project_error(build_normcheck_report, body.project, pack)
+    with _heavy_operation():
+        report = _catch_project_error(build_normcheck_report, body.project, pack)
     cfg = get_config()
     if cfg.llm_available:
+        _admit_llm(request)
         try:
             narrative = narrate_findings(
                 report.findings, report.summary, _client(), model=cfg.model_fast,
@@ -447,6 +516,7 @@ def normcheck_endpoint(body: ProjectBody) -> dict[str, Any]:
 
 @app.post("/api/import-schedule")
 async def import_schedule_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     mapping: str | None = Form(default=None),
     confirmed: bool = Form(default=False),
@@ -472,16 +542,19 @@ async def import_schedule_endpoint(
         manual_mapping = parsed_mapping
     pack = _pack_or_400(norm_pack)
     cfg = get_config()
+    if cfg.llm_available and manual_mapping is None:
+        _admit_llm(request)
     try:
-        result = import_schedule(
-            filename=filename,
-            data=data,
-            pack=pack,
-            manual_mapping=manual_mapping,
-            confirmed=confirmed,
-            llm_client=_client() if cfg.llm_available and manual_mapping is None else None,
-            llm_model=cfg.model_fast if cfg.llm_available else None,
-        )
+        with _heavy_operation():
+            result = import_schedule(
+                filename=filename,
+                data=data,
+                pack=pack,
+                manual_mapping=manual_mapping,
+                confirmed=confirmed,
+                llm_client=_client() if cfg.llm_available and manual_mapping is None else None,
+                llm_model=cfg.model_fast if cfg.llm_available else None,
+            )
     except ScheduleImportError as exc:
         raise HTTPException(
             status_code=exc.status_code,
@@ -507,7 +580,8 @@ def project_sld_endpoint(body: ProjectBody) -> dict[str, Any]:
 def project_export_endpoint(body: ProjectBody) -> Response:
     """Full document package as a downloadable zip (docs/13)."""
     pack = _pack_or_400(body.project.norm_pack)
-    data: bytes = _catch_project_error(build_bundle, body.project, data_pack=pack)
+    with _heavy_operation():
+        data: bytes = _catch_project_error(build_bundle, body.project, data_pack=pack)
     # HTTP headers are latin-1; RFC 5987 filename* must be percent-encoded UTF-8 (the board
     # ref can be Cyrillic), with an ASCII filename= fallback for old clients.
     fname = quote(f"{_safe_filename(body.project)}_пакет.zip")
