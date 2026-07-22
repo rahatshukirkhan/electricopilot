@@ -14,6 +14,14 @@ from electricopilot.models import (
 )
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[object]) -> object:
+    """Expose the call report so browser fixtures can retain diagnostics only on failure."""
+    outcome = yield
+    report = outcome.get_result()
+    setattr(item, f"rep_{report.when}", report)
+
+
 @pytest.fixture(scope="session")
 def pack() -> DataPack:
     return load_data_pack()
