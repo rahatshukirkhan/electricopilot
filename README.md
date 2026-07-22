@@ -61,6 +61,25 @@ uv sync --extra dev          # Python ≥3.11, ядро + инструменты
 # опционально: uv sync --extra dev --extra db --extra api   (Neon / FastAPI)
 ```
 
+### Проверки
+
+Базовый offline gate не требует браузер:
+
+```bash
+uv run pytest
+uv run ruff check .
+uv run mypy src
+```
+
+Для отдельного browser smoke-набора один раз установите Chromium, затем запустите его с
+явным opt-in. Набор поднимает Studio на loopback-порту, блокирует внешнюю сеть и не использует
+OpenRouter, Neon или production-секреты.
+
+```bash
+uv run playwright install chromium
+ELECTRICOPILOT_BROWSER_E2E=1 uv run pytest -m browser_e2e
+```
+
 Секреты — только через `.env` (см. `.env.example`, git-ignored). Ключи **не обязательны**:
 без них прототип работает в детерминированном фолбэк-режиме.
 

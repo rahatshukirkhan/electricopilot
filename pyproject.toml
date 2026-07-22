@@ -31,6 +31,8 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.9",
+    "playwright>=1.52",
+    "uvicorn>=0.29",
 ]
 
 [project.scripts]
@@ -46,6 +48,9 @@ packages = ["src/electricopilot"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "browser_e2e: runs the local Chromium Studio smoke suite (opt in with ELECTRICOPILOT_BROWSER_E2E=1)",
+]
 
 [tool.ruff]
 line-length = 100

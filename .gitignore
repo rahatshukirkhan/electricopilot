@@ -31,6 +31,7 @@ runs/
 
 # --- Node (not used by the build; guards against stray installs) ---
 node_modules/
+.e2e-artifacts/
 
 # --- OS / editor ---
 .DS_Store
