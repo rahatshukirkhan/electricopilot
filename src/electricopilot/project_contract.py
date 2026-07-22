@@ -162,7 +162,7 @@ class Project(_ProjectModel):
     supply: ProjectSupply
     diversity: DiversitySettings = Field(default_factory=DiversitySettings)
     export_settings: ExportSettings = Field(default_factory=ExportSettings)
-    circuits: list[Circuit]
+    circuits: list[Circuit] = Field(max_length=128)
     rollup: ProjectRollup | None = None
     import_info: ProjectImportInfo | None = None
 
