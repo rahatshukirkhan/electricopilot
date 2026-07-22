@@ -258,6 +258,15 @@ uv run mypy src          # strict
 Независимый оракул `scripts/reference_calc.py <pack>` пересчитывает золотые кейсы из пакета
 (вторая, не связанная с движком реализация формул).
 
+GitHub Actions workflow **Quality gate** запускается для каждого pull request и push в `main`.
+Он в трёх независимых read-only jobs выполняет те же команды: `pytest`, `ruff` и strict
+`mypy`. Workflow не получает `OPENROUTER_API_KEY`, `DATABASE_URL` или другие production-секреты;
+повторный push в ту же ветку отменяет устаревший запуск.
+
+Владелец репозитория должен отдельно включить branch protection для `main` и сделать
+обязательными checks `pytest`, `ruff` и `mypy`. Это защищает технический merge-гейт, но не
+заменяет ручное подтверждение заказчика после фаз v3.
+
 ## Норм-пакеты (мульти-пак)
 
 - `electricopilot packs` — список доступных паков; `--data-pack <имя>` или `?pack=<имя>` — выбор.
