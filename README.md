@@ -254,6 +254,7 @@ Project-report, normcheck, R11, read-only share и документы возвр
 полному валидированному норм-паку; недоверенный `circuit.result`, wall-clock и подпись в digest не
 входят. ZIP содержит `manifest.json`, `calculation-input.json` и `norm-pack.json` для offline
 сверки. Это проверка целостности, а не инженерная подпись: `UNSIGNED_ADVISORY` сохраняется.
+Для одного канонического проекта экспортный ZIP (включая DXF) воспроизводим побайтно.
 Полный контракт — [`docs/18-calculation-identity.md`](docs/18-calculation-identity.md).
 
 **Деплой на Vercel (статический фронтенд + Python-serverless бэкенд):**

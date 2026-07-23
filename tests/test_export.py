@@ -127,6 +127,15 @@ def test_dxf_round_trip():
         assert token in joined, token
 
 
+def test_dxf_is_byte_deterministic_without_leaking_ezdxf_global_option():
+    """DXF metadata is fixed per export, while caller settings remain untouched."""
+    import ezdxf
+
+    original = ezdxf.options.write_fixed_meta_data_for_testing
+    assert render_dxf(_tiny_drawing()) == render_dxf(_tiny_drawing())
+    assert ezdxf.options.write_fixed_meta_data_for_testing is original
+
+
 # --- XLSX --------------------------------------------------------------------------------
 def _read_sheet(xlsx_bytes: bytes):
     wb = load_workbook(io.BytesIO(xlsx_bytes))
@@ -245,11 +254,9 @@ def test_bundle_multi_sheet_adds_extra_sld_files():
     assert "sld.dxf" in names and "sld-2.dxf" in names
 
 
-def test_bundle_entry_names_are_stable():
-    """Zip entry set is stable across runs (payloads may differ: ezdxf stamps GUIDs/time)."""
-    a = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    b = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    assert a == b
+def test_bundle_is_byte_deterministic():
+    """Every payload and ZIP metadata entry are stable for the same canonical project."""
+    assert build_bundle(_board()) == build_bundle(_board())
 
 
 def test_bundle_contains_typed_calculation_manifest_inputs():
