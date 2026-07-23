@@ -7,9 +7,18 @@ free viewers (LibreCAD, ODA File Converter).
 from __future__ import annotations
 
 import io
+from datetime import datetime
 
 import ezdxf
+from ezdxf.document import (
+    CONST_GUID,
+    CONST_MARKER_STRING,
+    CREATED_BY_EZDXF,
+    WRITTEN_BY_EZDXF,
+)
 from ezdxf.enums import TextEntityAlignment
+from ezdxf.lldxf.tagwriter import TagWriter
+from ezdxf.tools.juliandate import juliandate
 
 from .primitives import Circle, Drawing, Line, Polyline, Primitive, Rect, Text
 
@@ -25,6 +34,30 @@ _LAYER_ACI = {"FRAME": 8, "BUS": 5, "WIRES": 9, "SYMBOLS": 7, "TEXT": 7}
 _ALIGN = {"start": TextEntityAlignment.LEFT,
           "middle": TextEntityAlignment.CENTER,
           "end": TextEntityAlignment.RIGHT}
+_FIXED_METADATA_DATE = juliandate(datetime(2000, 1, 1))
+
+
+def _write_deterministic(doc: ezdxf.document.Drawing) -> bytes:
+    """Serialize an ezdxf document with its generated metadata pinned.
+
+    ``Drawing.write()`` regenerates timestamps, GUIDs, and an ezdxf writer marker on every
+    call. Export through the same structured DXF model after its regular update pass, then
+    replace only those non-geometric metadata fields before emitting the sections.
+    """
+    doc.commit_pending_changes()
+    doc.classes.add_required_classes(doc.dxfversion)
+    doc.update_all()
+    for name in ("$TDCREATE", "$TDUCREATE", "$TDUPDATE", "$TDUUPDATE"):
+        doc.header[name] = _FIXED_METADATA_DATE
+    doc.header["$FINGERPRINTGUID"] = CONST_GUID
+    doc.header["$VERSIONGUID"] = CONST_GUID
+    metadata = doc.ezdxf_metadata()
+    metadata[CREATED_BY_EZDXF] = CONST_MARKER_STRING
+    metadata[WRITTEN_BY_EZDXF] = CONST_MARKER_STRING
+
+    stream = io.StringIO()
+    doc.export_sections(TagWriter(stream, write_handles=True, dxfversion=doc.dxfversion))
+    return stream.getvalue().encode("utf-8")
 
 
 def render_dxf(dwg: Drawing) -> bytes:
@@ -64,6 +97,4 @@ def render_dxf(dwg: Drawing) -> bytes:
         else:  # pragma: no cover - defensive
             raise TypeError(f"unknown primitive: {type(p).__name__}")
 
-    stream = io.StringIO()
-    doc.write(stream)
-    return stream.getvalue().encode("utf-8")
+    return _write_deterministic(doc)
