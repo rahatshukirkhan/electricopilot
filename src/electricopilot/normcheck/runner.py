@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from ..calculation_manifest import build_calculation_manifest, manifest_data_identity
 from ..data.loader import DataPack
-from ..engine import size
-from ..models import DISCLAIMER, SizingRequest, provenance_note_for
-from ..project import build_project_report
-from ..project_contract import ProjectInput, project_payload, validate_project
+from ..models import DISCLAIMER, provenance_note_for
+from ..project import build_project_calculation_snapshot, build_project_report
+from ..project_contract import ProjectInput, validate_project
 from .models import (
     BoardContext,
     CircuitContext,
@@ -22,17 +21,18 @@ _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
 def _context(project: ProjectInput, pack: DataPack) -> BoardContext:
     canonical = validate_project(project)
-    payload = project_payload(canonical)
-    report = build_project_report(canonical, data_pack=pack)
+    snapshot = build_project_calculation_snapshot(canonical, data_pack=pack)
+    payload = snapshot.project
+    report = build_project_report(canonical, calculation_snapshot=snapshot)
     rows = {str(row.get("id") or ""): row for row in report["rows"]}
     circuits: list[CircuitContext] = []
-    for raw in payload["circuits"]:
-        request = SizingRequest.model_validate(raw["request"])
-        result = size(request, data_pack=pack)
+    for raw, circuit_topology, result in zip(
+        payload["circuits"], snapshot.topology.circuits, snapshot.circuit_results, strict=True,
+    ):
         circuit_id = str(raw.get("id") or "")
         circuits.append(CircuitContext(
             project_circuit=raw,
-            request=request,
+            request=circuit_topology.request,
             result=result,
             row=rows[circuit_id],
         ))
