@@ -3,6 +3,7 @@ zip bundle completeness. No network; everything is deterministic."""
 from __future__ import annotations
 
 import io
+import hashlib
 import zipfile
 from pathlib import Path
 
@@ -110,6 +111,15 @@ def test_sld_splits_into_sheets_over_16():
 
 
 # --- DXF ---------------------------------------------------------------------------------
+def test_dxf_is_byte_deterministic():
+    """ezdxf metadata is normalized without changing the drawing model."""
+    board = _board()
+    drawing = build_sld(board, build_project_report(board))[0]
+    first, second = render_dxf(drawing), render_dxf(drawing)
+    assert first == second
+    assert hashlib.sha256(first).digest() == hashlib.sha256(second).digest()
+
+
 def test_dxf_round_trip():
     board = _board()
     report = build_project_report(board)
@@ -246,10 +256,11 @@ def test_bundle_multi_sheet_adds_extra_sld_files():
 
 
 def test_bundle_entry_names_are_stable():
-    """Zip entry set is stable across runs (payloads may differ: ezdxf stamps GUIDs/time)."""
-    a = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    b = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    assert a == b
+    """Every document and ZIP metadata are stable across repeated exports."""
+    first, second = build_bundle(_board()), build_bundle(_board())
+    assert first == second
+    assert hashlib.sha256(first).digest() == hashlib.sha256(second).digest()
+    assert zipfile.ZipFile(io.BytesIO(first)).namelist() == zipfile.ZipFile(io.BytesIO(second)).namelist()
 
 
 def test_bundle_contains_typed_calculation_manifest_inputs():

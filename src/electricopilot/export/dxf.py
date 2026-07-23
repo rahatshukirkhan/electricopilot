@@ -7,6 +7,7 @@ free viewers (LibreCAD, ODA File Converter).
 from __future__ import annotations
 
 import io
+import threading
 
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
@@ -25,9 +26,35 @@ _LAYER_ACI = {"FRAME": 8, "BUS": 5, "WIRES": 9, "SYMBOLS": 7, "TEXT": 7}
 _ALIGN = {"start": TextEntityAlignment.LEFT,
           "middle": TextEntityAlignment.CENTER,
           "end": TextEntityAlignment.RIGHT}
+_SERIALIZATION_LOCK = threading.Lock()
+
+
+def _serialize_deterministically(doc: ezdxf.document.Drawing) -> bytes:
+    """Write DXF with stable ezdxf-owned metadata, restoring global options afterwards.
+
+    ezdxf normally updates document GUIDs and its writer marker with the wall clock on every
+    ``write()``.  Those fields have no engineering meaning, but make an otherwise identical
+    drawing and its containing document bundle impossible to compare byte-for-byte.  The
+    library's fixed-metadata mode changes those fields structurally during serialization; it
+    does not rewrite the resulting DXF text.
+    """
+    stream = io.StringIO()
+    doc.write(stream)
+    return stream.getvalue().encode("utf-8")
 
 
 def render_dxf(dwg: Drawing) -> bytes:
+    """Render a drawing while pinning volatile ezdxf metadata for its whole lifecycle."""
+    with _SERIALIZATION_LOCK:
+        previous = ezdxf.options.write_fixed_meta_data_for_testing
+        try:
+            ezdxf.options.write_fixed_meta_data_for_testing = True
+            return _render_dxf(dwg)
+        finally:
+            ezdxf.options.write_fixed_meta_data_for_testing = previous
+
+
+def _render_dxf(dwg: Drawing) -> bytes:
     doc = ezdxf.new("R2010", setup=True)
     for name, aci in _LAYER_ACI.items():
         doc.layers.add(name, color=aci)
@@ -64,6 +91,4 @@ def render_dxf(dwg: Drawing) -> bytes:
         else:  # pragma: no cover - defensive
             raise TypeError(f"unknown primitive: {type(p).__name__}")
 
-    stream = io.StringIO()
-    doc.write(stream)
-    return stream.getvalue().encode("utf-8")
+    return _serialize_deterministically(doc)
