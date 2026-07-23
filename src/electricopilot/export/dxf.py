@@ -7,6 +7,7 @@ free viewers (LibreCAD, ODA File Converter).
 from __future__ import annotations
 
 import io
+from threading import Lock
 
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
@@ -25,9 +26,23 @@ _LAYER_ACI = {"FRAME": 8, "BUS": 5, "WIRES": 9, "SYMBOLS": 7, "TEXT": 7}
 _ALIGN = {"start": TextEntityAlignment.LEFT,
           "middle": TextEntityAlignment.CENTER,
           "end": TextEntityAlignment.RIGHT}
+_EZDXF_WRITE_LOCK = Lock()
 
 
 def render_dxf(dwg: Drawing) -> bytes:
+    """Render a drawing with fixed non-geometric ezdxf metadata."""
+    # ezdxf creates GUIDs while constructing a document and refreshes timestamps at write.
+    # Its fixed-metadata mode handles both; the lock contains its process-wide option.
+    with _EZDXF_WRITE_LOCK:
+        previous = ezdxf.options.write_fixed_meta_data_for_testing
+        ezdxf.options.write_fixed_meta_data_for_testing = True
+        try:
+            return _render_dxf(dwg)
+        finally:
+            ezdxf.options.write_fixed_meta_data_for_testing = previous
+
+
+def _render_dxf(dwg: Drawing) -> bytes:
     doc = ezdxf.new("R2010", setup=True)
     for name, aci in _LAYER_ACI.items():
         doc.layers.add(name, color=aci)

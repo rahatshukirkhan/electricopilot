@@ -127,6 +127,12 @@ def test_dxf_round_trip():
         assert token in joined, token
 
 
+def test_dxf_is_byte_deterministic():
+    """DXF metadata is pinned without changing the R2010 geometry payload."""
+    drawing = _tiny_drawing()
+    assert render_dxf(drawing) == render_dxf(drawing)
+
+
 # --- XLSX --------------------------------------------------------------------------------
 def _read_sheet(xlsx_bytes: bytes):
     wb = load_workbook(io.BytesIO(xlsx_bytes))
@@ -245,11 +251,9 @@ def test_bundle_multi_sheet_adds_extra_sld_files():
     assert "sld.dxf" in names and "sld-2.dxf" in names
 
 
-def test_bundle_entry_names_are_stable():
-    """Zip entry set is stable across runs (payloads may differ: ezdxf stamps GUIDs/time)."""
-    a = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    b = zipfile.ZipFile(io.BytesIO(build_bundle(_board()))).namelist()
-    assert a == b
+def test_bundle_is_byte_deterministic():
+    """Fixed ZIP metadata and fixed DXF metadata make the complete bundle reproducible."""
+    assert build_bundle(_board()) == build_bundle(_board())
 
 
 def test_bundle_contains_typed_calculation_manifest_inputs():
