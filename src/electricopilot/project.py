@@ -8,18 +8,55 @@ is schedule-only and never touches the engine.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from .calculation_manifest import build_calculation_manifest, manifest_data_identity
 from .data.loader import DataPack, load_data_pack
 from .engine import size
-from .models import DISCLAIMER, SizingRequest, provenance_note_for
+from .models import DISCLAIMER, SizingRequest, SizingResult, provenance_note_for
 from .project_contract import ProjectInput, project_payload
-from .topology import incomer_current_a, phase_imbalance_pct, validate_project_topology
+from .topology import (
+    ProjectTopology,
+    incomer_current_a,
+    phase_imbalance_pct,
+    validate_project_topology,
+)
 
 _DEFAULT_DIVERSITY = {  # ILLUSTRATIVE (synthetic) demand factors by load category
     "lighting": 0.9, "socket": 0.5, "motor": 1.0, "power": 0.8, "general": 0.7,
 }
+
+
+@dataclass(frozen=True)
+class ProjectCalculationSnapshot:
+    """One fresh, typed engine pass shared by project-report consumers."""
+
+    project: dict[str, Any]
+    pack: DataPack
+    topology: ProjectTopology
+    circuit_results: tuple[SizingResult, ...]
+
+
+def build_project_calculation_snapshot(
+    project: ProjectInput,
+    *,
+    data_pack: DataPack | None = None,
+) -> ProjectCalculationSnapshot:
+    """Validate and size every circuit once; never reuse a client-side snapshot."""
+    data = project_payload(project)
+    pack = data_pack or load_data_pack(data.get("norm_pack"))
+    topology = validate_project_topology(data)
+    circuit_results = tuple(
+        size(circuit_topology.request, data_pack=pack)
+        for circuit_topology in topology.circuits
+    )
+    return ProjectCalculationSnapshot(
+        project=data,
+        pack=pack,
+        topology=topology,
+        circuit_results=circuit_results,
+    )
 
 
 def _kw_kva(req: SizingRequest, ib: float) -> tuple[float, float]:
@@ -57,10 +94,14 @@ def build_project_report(
     project: ProjectInput,
     *,
     data_pack: DataPack | None = None,
+    calculation_snapshot: ProjectCalculationSnapshot | None = None,
 ) -> dict[str, Any]:
-    data = project_payload(project)
-    pack = data_pack or load_data_pack(data.get("norm_pack"))
-    topology = validate_project_topology(data)
+    snapshot = calculation_snapshot or build_project_calculation_snapshot(
+        project, data_pack=data_pack,
+    )
+    data = snapshot.project
+    pack = snapshot.pack
+    topology = snapshot.topology
     supply = data["supply"]
     ways_total = int(supply["ways_total"])
     diversity = {**_DEFAULT_DIVERSITY, **data["diversity"]["factors"]}
@@ -71,12 +112,11 @@ def build_project_report(
     connected_kw = connected_kva = emd_kw = 0.0
     used_provenance_sections: set[str] = set()
 
-    for c, circuit_topology in zip(
-        data["circuits"], topology.circuits, strict=True,
+    for c, circuit_topology, res in zip(
+        data["circuits"], topology.circuits, snapshot.circuit_results, strict=True,
     ):
         meta = c.get("meta", {}) or {}
         req = circuit_topology.request
-        res = size(req, data_pack=pack)
         used_provenance_sections.update(a.section for a in res.data_provenance.used_sections)
         ib = res.design_current_a
         kw, kva = _kw_kva(req, ib)

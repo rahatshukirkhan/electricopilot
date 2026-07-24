@@ -17,6 +17,7 @@ from electricopilot.normcheck import (
     narrate_findings,
     run_normcheck,
 )
+import electricopilot.project as project_module
 from electricopilot.project import build_project_report
 from electricopilot.studio_api import app
 
@@ -277,6 +278,35 @@ def test_stable_sort_is_severity_then_ref_then_rule(verified_pack: DataPack) -> 
     rank = {"error": 0, "warning": 1, "info": 2}
     keys = [(rank[f.severity], f.circuit_ref or "", f.rule_id, f.status) for f in findings]
     assert keys == sorted(keys)
+
+
+def test_normcheck_endpoint_uses_one_fresh_engine_pass_per_circuit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    project = _project(
+        _circuit("C1", phase="L1"),
+        _circuit("C2", phase="L2"),
+        _circuit("C3", phase="L3"),
+    )
+    expected = [
+        finding.model_dump(mode="json")
+        for finding in run_normcheck(project, load_data_pack())
+    ]
+    calls = 0
+    original_size = project_module.size
+
+    def counted_size(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return original_size(*args, **kwargs)
+
+    monkeypatch.setattr(project_module, "size", counted_size)
+    response = TestClient(app).post("/api/normcheck", json={"project": project})
+
+    assert response.status_code == 200
+    assert calls == len(project["circuits"])
+    assert response.json()["findings"] == expected
 
 
 def test_summary_counts_violations_separately_from_not_checked(verified_pack: DataPack) -> None:
