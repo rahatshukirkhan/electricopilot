@@ -17,6 +17,15 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "ezdxf>=1.1",
     "openpyxl>=3.1",
+    # norms/parse.py (docs/20 §4): adilet HTML → sections. beautifulsoup4>=4.13 ships py.typed,
+    # so the mypy-strict surface stays on bs4's API; html5lib is used only as bs4's backend
+    # parser (never imported directly) and is pinned as THE parser for the §5 determinism
+    # invariant. NOT lxml: installing lxml flips openpyxl to its lxml XML backend, which then
+    # rejects the core.xml our byte-deterministic xlsx normalizer rewrites (PER-14). html5lib
+    # also follows the HTML5 tree-construction spec, like cheerio/parse5 in legality — verified
+    # to give a byte-identical parse to lxml on the full 3.7 МБ ПУЭ page.
+    "beautifulsoup4>=4.13",
+    "html5lib>=1.1",
 ]
 
 [project.optional-dependencies]
