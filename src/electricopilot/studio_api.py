@@ -680,26 +680,75 @@ def norms_list_endpoint() -> dict[str, Any]:
     return {"ok": True, "documents": [_norm_document_payload(r) for r in records]}
 
 
+# Структура документа: у adilet заголовки разделов/глав/параграфов приходят отдельными
+# секциями без тела, а пункты — секциями без заголовка. Оглавление строится по ПЕРВЫМ, а не по
+# каждому пункту: иначе получается стена из 7791 кода вида z1938 вместо читаемого содержания.
+_OUTLINE_DEPTH = (
+    (re.compile(r"^Раздел\s+\d+"), 0),
+    (re.compile(r"^Глава\s+\d+"), 1),
+    (re.compile(r"^Параграф\s+\d+"), 2),
+    (re.compile(r"^Приложение\s+\d+"), 0),
+)
+NORMS_PAGE_SIZE = 60
+
+
+def _outline_depth(text: str) -> int | None:
+    for pattern, depth in _OUTLINE_DEPTH:
+        if pattern.match(text):
+            return depth
+    return None
+
+
+def _reading_payload(doc: NormDocument, section: NormSection) -> dict[str, Any]:
+    """Одна единица чтения: либо заголовок, либо пункт с текстом."""
+    payload = _norm_section_payload(doc, section)
+    payload["kind"] = "heading" if section.heading and not section.body.strip() else "clause"
+    payload["depth"] = _outline_depth(section.heading or "") if section.heading else None
+    return payload
+
+
 @app.get("/api/norms/{doc_id}")
-def norms_document_endpoint(doc_id: str) -> dict[str, Any]:
-    """Table of contents: breadcrumb groups with anchors and table flags."""
+def norms_document_endpoint(
+    doc_id: str,
+    anchor: str | None = None,
+    offset: int = 0,
+    limit: int = NORMS_PAGE_SIZE,
+) -> dict[str, Any]:
+    """Оглавление документа + страница сплошного текста для чтения.
+
+    Читалка показывает текст ПОДРЯД, как в первоисточнике, а не по одному пункту: документ
+    читают, а не выбирают из справочника. `anchor` открывает страницу, на которой этот пункт
+    лежит, — так работают и переход из поиска, и переход из цитаты расчёта.
+    """
     store = _norm_store()
     record = store.get_document(doc_id)
     if record is None:
         raise _norm_abstention(doc_id)
-    toc: list[dict[str, Any]] = []
-    for section in store.list_sections(doc_id):
-        entry = {
-            "anchor": section.anchor,
-            "ordinal": section.ordinal,
-            "heading": section.heading,
-            "has_table": section.has_table,
-        }
-        if not toc or toc[-1]["breadcrumb"] != section.breadcrumb:
-            toc.append({"breadcrumb": section.breadcrumb, "sections": [entry]})
-        else:
-            toc[-1]["sections"].append(entry)
-    return {"ok": True, "document": _norm_document_payload(record), "toc": toc}
+    doc = record.document
+    limit = max(1, min(limit, 300))
+    view = store.reading_view(doc_id, anchor=anchor, offset=offset, limit=limit)
+    total, offset, window = view.total, view.offset, view.page
+
+    outline = [
+        {"anchor": s.anchor, "text": s.heading, "depth": _outline_depth(s.heading or "") or 0}
+        for s in view.headings
+        if s.heading and _outline_depth(s.heading) is not None
+    ]
+
+    return {
+        "ok": True,
+        "document": _norm_document_payload(record),
+        "outline": outline,
+        "page": {
+            "sections": [_reading_payload(doc, s) for s in window],
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "prev_offset": max(0, offset - limit) if offset > 0 else None,
+            "next_offset": offset + limit if offset + limit < total else None,
+            "focus_anchor": anchor,
+        },
+    }
 
 
 @app.get("/api/norms/{doc_id}/sections/{anchor}")

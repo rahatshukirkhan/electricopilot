@@ -196,20 +196,53 @@ def test_norms_list_endpoint(client: TestClient) -> None:
     assert doc["sections"] > 50
 
 
-def test_norms_toc_endpoint_groups_by_breadcrumb(client: TestClient) -> None:
+def test_document_endpoint_returns_outline_and_readable_page(client: TestClient) -> None:
+    """Оглавление — по разделам/главам/параграфам, а не по каждому пункту.
+
+    Регрессия, которую это закрывает: раньше эндпоинт отдавал по записи на секцию, и UI рисовал
+    стену из тысяч кодов вида z1938 вместо содержания.
+    """
     body = client.get(f"/api/norms/{TECHREG}").json()
     assert body["ok"] is True
     assert body["document"]["status"] == "in_force"  # §8.4 на каждой поверхности
-    toc = body["toc"]
-    assert toc and all("breadcrumb" in group and group["sections"] for group in toc)
-    anchors = [s["anchor"] for group in toc for s in group["sections"]]
-    assert anchors == sorted(set(anchors), key=anchors.index)  # без дублей, в порядке документа
-    assert all(anchor and anchor.startswith("z") for anchor in anchors)
+
+    outline = body["outline"]
+    assert outline, "оглавление пустое"
+    assert len(outline) < body["document"]["sections"] / 4  # это содержание, а не список пунктов
+    assert all(o["text"] and o["anchor"] and o["depth"] >= 0 for o in outline)
+    assert any(o["text"].startswith("Глава ") for o in outline)
+
+    page = body["page"]
+    assert page["offset"] == 0 and page["sections"]
+    assert page["total"] == body["document"]["sections"]
+    kinds = {s["kind"] for s in page["sections"]}
+    assert kinds <= {"heading", "clause"}
+    clauses = [s for s in page["sections"] if s["kind"] == "clause"]
+    assert clauses and all(s["body"] for s in clauses)
+    assert all(s["source_url"].endswith("#" + s["anchor"]) for s in page["sections"])
+
+
+def test_document_page_navigates_and_focuses_an_anchor(client: TestClient) -> None:
+    first = client.get(f"/api/norms/{TECHREG}?limit=10").json()["page"]
+    assert first["prev_offset"] is None and first["next_offset"] == 10
+
+    second = client.get(f"/api/norms/{TECHREG}?offset=10&limit=10").json()["page"]
+    assert second["prev_offset"] == 0
+    assert {s["anchor"] for s in first["sections"]}.isdisjoint(
+        {s["anchor"] for s in second["sections"]}
+    )
+
+    # переход из поиска/цитаты: страница открывается на той, где лежит нужный пункт
+    target = second["sections"][3]["anchor"]
+    focused = client.get(f"/api/norms/{TECHREG}?anchor={target}&limit=10").json()["page"]
+    assert focused["offset"] == 10
+    assert focused["focus_anchor"] == target
+    assert target in {s["anchor"] for s in focused["sections"]}
 
 
 def test_norms_section_endpoint_carries_citation_and_neighbours(client: TestClient) -> None:
-    toc = client.get(f"/api/norms/{TECHREG}").json()["toc"]
-    anchors = [s["anchor"] for group in toc for s in group["sections"]]
+    page = client.get(f"/api/norms/{TECHREG}?limit=20").json()["page"]
+    anchors = [s["anchor"] for s in page["sections"]]
     anchor = anchors[1]
     body = client.get(f"/api/norms/{TECHREG}/sections/{anchor}").json()
     section = body["section"]
@@ -332,6 +365,9 @@ def test_norm_library_styles_stay_in_their_own_namespace() -> None:
     for rule in re.findall(r"^([^{@}][^{}]*)\{", block, re.MULTILINE):
         for selector in rule.split(","):
             selector = selector.strip()
+            # шаги @keyframes (`0%`, `from`, `to`) — не селекторы, пространства имён не нарушают
+            if re.fullmatch(r"(\d+%|from|to)(\s*,\s*(\d+%|from|to))*", selector):
+                continue
             if selector and ".nlib-" not in selector:
                 offenders.append(selector)
     assert offenders == [], f"селекторы вне пространства имён библиотеки: {offenders}"

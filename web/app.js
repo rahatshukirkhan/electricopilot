@@ -143,8 +143,7 @@ function route() {
     crumbs([['Проекты', '#/'], ['Нормы', '#/norms']]);
     topBadge(''); setSave(''); $('saveState').textContent = '';
     loadNormDocs().then(() => {
-      if (mn[1] && mn[2]) return openNormSection(mn[1], mn[2]);
-      if (mn[1]) return openNormDoc(mn[1]);
+      if (mn[1]) return openNormDoc(mn[1], mn[2] ? { anchor: mn[2] } : {});
       NORMS.docId = null;
       $('normToc').hidden = true; $('normReader').hidden = true;
       $('normEmpty').hidden = $('normSearchInput').value.trim() ? true : false;
@@ -1055,40 +1054,69 @@ async function loadNormDocs() {
     : '<span class="dim">Библиотека пуста. Загрузите корпус: <code>electricopilot norms ingest</code>.</span>';
 }
 
-async function openNormDoc(docId) {
+async function openNormDoc(docId, opts = {}) {
   NORMS.docId = docId;
   await loadNormDocs();
-  $('normResults').hidden = true; $('normEmpty').hidden = true; $('normReader').hidden = true;
-  const toc = $('normToc'); toc.hidden = false; toc.innerHTML = '<span class="dim">загружаю оглавление…</span>';
+  $('normResults').hidden = true;
+  $('normEmpty').hidden = true;
+  const toc = $('normToc'); const reader = $('normReader');
+  toc.hidden = false; reader.hidden = false;
+  reader.innerHTML = '<span class="dim">загружаю текст…</span>';
+  const qs = new URLSearchParams();
+  if (opts.anchor) qs.set('anchor', opts.anchor);
+  if (opts.offset != null) qs.set('offset', opts.offset);
   try {
-    const data = await normFetch('/api/norms/' + encodeURIComponent(docId));
-    toc.innerHTML = `<h3>${esc(data.document.title)} ${normBadge(data.document.status)}</h3>`
-      + normNote(data.document)
-      + data.toc.map(g => `<div class="nlib-toc-group">
-          <h4>${esc(g.breadcrumb || 'Без раздела')}</h4>
-          <ul>${g.sections.map(s => `<li><button class="nlib-anchor ${s.has_table ? 'has-table' : ''}"
-            data-doc="${esc(docId)}" data-anchor="${esc(s.anchor)}"
-            title="${esc(s.heading || s.anchor)}">${esc(s.heading ? s.heading.slice(0, 40) : s.anchor)}</button></li>`).join('')}</ul>
-        </div>`).join('');
-  } catch (e) { toc.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
+    const data = await normFetch('/api/norms/' + encodeURIComponent(docId) + (qs.toString() ? '?' + qs : ''));
+    NORMS.doc = data.document;
+    renderNormOutline(docId, data);
+    renderNormReader(docId, data);
+    if (opts.anchor) {
+      const target = reader.querySelector(`[data-anchor-mark="${CSS.escape(opts.anchor)}"]`);
+      if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('nlib-focus'); }
+    } else reader.scrollTop = 0;
+  } catch (e) { reader.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
 }
 
-async function openNormSection(docId, anchor) {
-  $('normToc').hidden = true; $('normResults').hidden = true; $('normEmpty').hidden = true;
-  const reader = $('normReader'); reader.hidden = false;
-  reader.innerHTML = '<span class="dim">загружаю пункт…</span>';
-  try {
-    const data = await normFetch(`/api/norms/${encodeURIComponent(docId)}/sections/${encodeURIComponent(anchor)}`);
-    const s = data.section, d = data.document;
-    reader.innerHTML = `<h3>${esc(s.heading || d.title)} ${normBadge(d.status)}</h3>
-      <div class="crumb">${esc(s.breadcrumb)} · <a href="${esc(s.source_url)}" target="_blank" rel="noopener">открыть на adilet.zan.kz ↗</a></div>
-      ${normNote(d)}<div class="nlib-body">${normBody(s)}</div>
-      <div class="nlib-nav">
-        <button class="ghost" data-doc="${esc(docId)}" data-back="1">← оглавление</button>
-        ${data.prev ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.prev.anchor)}">‹ пред</button>` : ''}
-        ${data.next ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.next.anchor)}">след ›</button>` : ''}
-      </div>`;
-  } catch (e) { reader.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
+// Оглавление строится по заголовкам разделов/глав/параграфов, а не по каждому пункту:
+// у ПУЭ 7791 пункт, список их якорей — не содержание, а стена кодов.
+function renderNormOutline(docId, data) {
+  const d = data.document;
+  $('normToc').innerHTML = `<div class="nlib-doc-head">
+      <h3>${esc(d.title)}</h3>
+      <div class="nlib-doc-meta">${normBadge(d.status)} · ${d.sections} пунктов ·
+        <a href="${esc(d.source_url)}" target="_blank" rel="noopener">первоисточник ↗</a></div>
+      ${normNote(d)}
+    </div>
+    <div class="nlib-outline">${data.outline.map(o => `
+      <button class="nlib-outline-item d${o.depth}" data-doc="${esc(docId)}" data-anchor="${esc(o.anchor)}"
+        title="${esc(o.text)}">${esc(o.text)}</button>`).join('') || '<span class="dim">Разделы не размечены.</span>'}</div>`;
+}
+
+// Сплошной текст, как в первоисточнике: заголовки — заголовками, пункты — абзацами,
+// якорь показывается мелко и только при наведении (это адрес для ссылки, а не часть нормы).
+function renderNormReader(docId, data) {
+  const p = data.page;
+  const html = p.sections.map(s => {
+    if (s.kind === 'heading') {
+      const level = s.depth === 0 ? 'h2' : s.depth === 2 ? 'h4' : 'h3';
+      return `<${level} class="nlib-h" data-anchor-mark="${esc(s.anchor)}">${esc(s.heading)}</${level}>`;
+    }
+    const body = s.has_table
+      ? `<pre class="nlib-table">${esc(s.body)}</pre>`
+      : s.body.split('\n\n').filter(Boolean).map(x => `<p>${esc(x)}</p>`).join('');
+    return `<section class="nlib-clause" data-anchor-mark="${esc(s.anchor)}">
+        <a class="nlib-anchor-link" href="${esc(s.source_url)}" target="_blank" rel="noopener"
+           title="пункт ${esc(s.anchor)} на adilet.zan.kz">${esc(s.anchor)}</a>
+        ${s.heading ? `<h4 class="nlib-h">${esc(s.heading)}</h4>` : ''}${body}
+      </section>`;
+  }).join('');
+  const from = p.offset + 1, to = Math.min(p.offset + p.limit, p.total);
+  $('normReader').innerHTML = `<div class="nlib-text">${html}</div>
+    <div class="nlib-pager">
+      ${p.prev_offset !== null ? `<button class="ghost" data-doc="${esc(docId)}" data-offset="${p.prev_offset}">‹ назад</button>` : '<span></span>'}
+      <span class="dim">пункты ${from}–${to} из ${p.total}</span>
+      ${p.next_offset !== null ? `<button class="ghost" data-doc="${esc(docId)}" data-offset="${p.next_offset}">дальше ›</button>` : '<span></span>'}
+    </div>`;
 }
 
 async function runNormSearch(query) {
@@ -1143,9 +1171,9 @@ document.addEventListener('click', (e) => {
   const doc = e.target.closest('.nlib-doc');
   if (doc) { go('/norms/' + doc.dataset.doc); return; }
   const hit = e.target.closest('[data-anchor]');
-  if (hit && hit.dataset.doc) { go(`/norms/${hit.dataset.doc}/${hit.dataset.anchor}`); return; }
-  const back = e.target.closest('[data-back]');
-  if (back) { go('/norms/' + back.dataset.doc); }
+  if (hit && hit.dataset.doc) { openNormDoc(hit.dataset.doc, { anchor: hit.dataset.anchor }); return; }
+  const pager = e.target.closest('[data-offset]');
+  if (pager) { openNormDoc(pager.dataset.doc, { offset: +pager.dataset.offset }); }
 });
 $('normPanelClose').addEventListener('click', () => { $('normPanel').hidden = true; });
 $('btnNorms').addEventListener('click', () => go('/norms'));
