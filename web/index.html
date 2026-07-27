@@ -18,7 +18,7 @@
     ElectriCopilot <span>Studio</span>
   </div>
   <nav class="crumbs" id="crumbs"></nav>
-  <button id="btnNorms" class="ghost topnav" title="Нормативная библиотека">Нормы</button>
+  <button id="btnNorms" class="ghost nlib-topnav" title="Нормативная библиотека">Нормы</button>
   <div class="save" id="saveState" title="Автосохранение">сохранено</div>
   <div id="statusBadge" class="badge">—</div>
   <div class="mode" id="modeTag" title="Режим LLM">…</div>
@@ -197,15 +197,15 @@
       </div>
     </div>
     <p class="dim">Официальные тексты с adilet.zan.kz. Числа для расчёта берутся только из датапаков — тексты здесь для чтения человеком.</p>
-    <div class="norms-layout">
-      <aside class="norms-side">
+    <div class="nlib-layout">
+      <aside class="nlib-side">
         <h3>Документы</h3>
-        <div id="normDocList" class="norm-doc-list"></div>
+        <div id="normDocList" class="nlib-doc-list"></div>
       </aside>
-      <div class="norms-main">
-        <div id="normResults" class="norm-results" hidden></div>
-        <div id="normToc" class="norm-toc" hidden></div>
-        <div id="normReader" class="norm-reader" hidden></div>
+      <div class="nlib-main">
+        <div id="normResults" class="nlib-results" hidden></div>
+        <div id="normToc" class="nlib-toc" hidden></div>
+        <div id="normReader" class="nlib-reader" hidden></div>
         <div id="normEmpty" class="empty">Выберите документ слева или найдите пункт поиском.</div>
       </div>
     </div>
@@ -337,13 +337,13 @@
 </main>
 
 <!-- Reader side panel: opens on a citation click from the report / normcheck (docs/20 §10.3) -->
-<aside id="normPanel" class="norm-panel" hidden>
-  <div class="norm-panel-h">
-    <div id="normPanelTitle" class="norm-panel-title"></div>
-    <a id="normPanelSource" class="norm-panel-src" target="_blank" rel="noopener">открыть на adilet.zan.kz ↗</a>
+<aside id="normPanel" class="nlib-panel" hidden>
+  <div class="nlib-panel-h">
+    <div id="normPanelTitle" class="nlib-panel-title"></div>
+    <a id="normPanelSource" class="nlib-panel-src" target="_blank" rel="noopener">открыть на adilet.zan.kz ↗</a>
     <button id="normPanelClose" class="ghost">Закрыть</button>
   </div>
-  <div id="normPanelBody" class="norm-panel-body"></div>
+  <div id="normPanelBody" class="nlib-panel-body"></div>
 </aside>
 
 <div id="toast" class="toast" hidden></div>

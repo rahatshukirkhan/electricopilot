@@ -1019,15 +1019,15 @@ boot();
 const NORM_ST = { in_force: 'действует', repealed: 'утратил силу', unknown: 'статус неясен' };
 let NORMS = { docs: [], docId: null };
 
-const normBadge = (st) => `<span class="norm-status ${esc(st)}" title="${esc(st)}">${esc(NORM_ST[st] || st)}</span>`;
+const normBadge = (st) => `<span class="nlib-status ${esc(st)}" title="${esc(st)}">${esc(NORM_ST[st] || st)}</span>`;
 // Сниппет приходит с маркерами [[…]] от обоих бэкендов поиска: экранируем текст, потом подсвечиваем.
 const normSnippet = (s) => esc(s).replace(/\[\[(.+?)\]\]/g, '<mark>$1</mark>');
 // §8.4: плашка с дословной сноской об утрате силы — везде, где показан текст документа.
 const normNote = (d) => (d.status === 'repealed' && d.status_note)
-  ? `<div class="norm-repealed-note">${esc(d.status_note)}</div>` : '';
+  ? `<div class="nlib-repealed-note">${esc(d.status_note)}</div>` : '';
 
 function normBody(section) {
-  if (section.has_table) return `<pre class="norm-table">${esc(section.body)}</pre>`;
+  if (section.has_table) return `<pre class="nlib-table">${esc(section.body)}</pre>`;
   return section.body.split('\n\n').filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('');
 }
 
@@ -1048,7 +1048,7 @@ async function loadNormDocs() {
   } catch (e) { NORMS.docs = []; }
   const list = $('normDocList');
   list.innerHTML = NORMS.docs.length ? NORMS.docs.map(d => `
-    <button class="norm-doc ${d.id === NORMS.docId ? 'active' : ''}" data-doc="${esc(d.id)}">
+    <button class="nlib-doc ${d.id === NORMS.docId ? 'active' : ''}" data-doc="${esc(d.id)}">
       <div class="t">${esc(d.title)}</div>
       <div class="m">${normBadge(d.status)} · ${d.sections} п. · ${esc(d.id)}</div>
     </button>`).join('')
@@ -1064,9 +1064,9 @@ async function openNormDoc(docId) {
     const data = await normFetch('/api/norms/' + encodeURIComponent(docId));
     toc.innerHTML = `<h3>${esc(data.document.title)} ${normBadge(data.document.status)}</h3>`
       + normNote(data.document)
-      + data.toc.map(g => `<div class="norm-toc-group">
+      + data.toc.map(g => `<div class="nlib-toc-group">
           <h4>${esc(g.breadcrumb || 'Без раздела')}</h4>
-          <ul>${g.sections.map(s => `<li><button class="norm-anchor ${s.has_table ? 'has-table' : ''}"
+          <ul>${g.sections.map(s => `<li><button class="nlib-anchor ${s.has_table ? 'has-table' : ''}"
             data-doc="${esc(docId)}" data-anchor="${esc(s.anchor)}"
             title="${esc(s.heading || s.anchor)}">${esc(s.heading ? s.heading.slice(0, 40) : s.anchor)}</button></li>`).join('')}</ul>
         </div>`).join('');
@@ -1082,8 +1082,8 @@ async function openNormSection(docId, anchor) {
     const s = data.section, d = data.document;
     reader.innerHTML = `<h3>${esc(s.heading || d.title)} ${normBadge(d.status)}</h3>
       <div class="crumb">${esc(s.breadcrumb)} · <a href="${esc(s.source_url)}" target="_blank" rel="noopener">открыть на adilet.zan.kz ↗</a></div>
-      ${normNote(d)}<div class="norm-body">${normBody(s)}</div>
-      <div class="norm-nav">
+      ${normNote(d)}<div class="nlib-body">${normBody(s)}</div>
+      <div class="nlib-nav">
         <button class="ghost" data-doc="${esc(docId)}" data-back="1">← оглавление</button>
         ${data.prev ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.prev.anchor)}">‹ пред</button>` : ''}
         ${data.next ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.next.anchor)}">след ›</button>` : ''}
@@ -1102,7 +1102,7 @@ async function runNormSearch(query) {
       body: JSON.stringify({ query, limit: 30, include_repealed: $('normInclRepealed').checked }),
     });
     box.innerHTML = data.results.length ? data.results.map(h => `
-      <div class="norm-hit" data-doc="${esc(h.doc_id)}" data-anchor="${esc(h.anchor)}">
+      <div class="nlib-hit" data-doc="${esc(h.doc_id)}" data-anchor="${esc(h.anchor)}">
         <div class="crumb">${esc(h.breadcrumb || '—')} · ${normBadge(h.doc_status)}</div>
         <div>${normSnippet(h.snippet)}</div>
       </div>`).join('')
@@ -1123,7 +1123,7 @@ async function openNormPanel(docId, anchor) {
     $('normPanelTitle').innerHTML = `${esc(s.heading || d.title)} ${normBadge(d.status)}`;
     $('normPanelSource').href = s.source_url;
     $('normPanelBody').innerHTML = `<div class="crumb">${esc(s.breadcrumb)}</div>${normNote(d)}
-      <div class="norm-body">${normBody(s)}</div>`;
+      <div class="nlib-body">${normBody(s)}</div>`;
   } catch (e) {
     $('normPanelTitle').textContent = 'Пункт недоступен';
     $('normPanelBody').innerHTML = `<span class="dim">${esc(e.message)}</span>`;
@@ -1133,14 +1133,14 @@ async function openNormPanel(docId, anchor) {
 // Цитата с doc_id+anchor становится ссылкой «открыть пункт»; без якоря рендерится как раньше (§9).
 function citeOpenButton(c) {
   return (c && c.doc_id && c.anchor)
-    ? ` <button class="cite-open" data-cite-doc="${esc(c.doc_id)}" data-cite-anchor="${esc(c.anchor)}">открыть пункт</button>`
+    ? ` <button class="nlib-cite-open" data-cite-doc="${esc(c.doc_id)}" data-cite-anchor="${esc(c.anchor)}">открыть пункт</button>`
     : '';
 }
 
 document.addEventListener('click', (e) => {
   const cite = e.target.closest('[data-cite-doc]');
   if (cite) { openNormPanel(cite.dataset.citeDoc, cite.dataset.citeAnchor); return; }
-  const doc = e.target.closest('.norm-doc');
+  const doc = e.target.closest('.nlib-doc');
   if (doc) { go('/norms/' + doc.dataset.doc); return; }
   const hit = e.target.closest('[data-anchor]');
   if (hit && hit.dataset.doc) { go(`/norms/${hit.dataset.doc}/${hit.dataset.anchor}`); return; }
