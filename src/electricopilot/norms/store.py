@@ -9,13 +9,21 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from electricopilot.exceptions import ElectriCopilotError
-from electricopilot.norms.parse import LinkEdge, NormDocument, NormSection, NormStatus
+from electricopilot.norms.parse import (
+    LinkEdge,
+    NormDocument,
+    NormSection,
+    NormStatus,
+    source_href,
+)
 
 # docs/20 §3, verbatim. Verified against the live Neon instance 2026-07-28: the generated
 # `tsvector` column is accepted as written (the one-argument-config form of to_tsvector is
@@ -87,6 +95,32 @@ class UpsertOutcome:
     sections_written: int
 
 
+# Highlight delimiters for search snippets. Pinned explicitly instead of inheriting
+# ts_headline's server-side `<b>`/`</b>` default, so both backends emit the SAME markers and
+# PR 4's UI can rely on them (an HTML default would also have to be escaped downstream).
+SNIPPET_START = "[["
+SNIPPET_STOP = "]]"
+
+#: Both backends search exactly the fields the generated `tsv` column covers, so lexical
+#: coverage cannot drift between them: breadcrumb + heading + body.
+SEARCH_FIELDS = ("breadcrumb", "heading", "body")
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    """One ranked section (docs/20 §6 response schema, plus §8.1 citation grounding)."""
+
+    section_id: str
+    doc_id: str
+    anchor: str
+    breadcrumb: str
+    heading: str | None
+    snippet: str
+    rank: float
+    doc_status: NormStatus
+    source_url: str
+
+
 class NormStore(Protocol):
     def init_schema(self) -> None: ...
 
@@ -110,6 +144,15 @@ class NormStore(Protocol):
     def get_section(self, doc_id: str, anchor: str) -> NormSection | None: ...
 
     def links_from(self, doc_id: str) -> list[LinkEdge]: ...
+
+    def search(
+        self,
+        query: str,
+        *,
+        doc_ids: list[str] | None = None,
+        limit: int = 20,
+        include_repealed: bool = False,
+    ) -> list[SearchHit]: ...
 
 
 def _utc_now() -> datetime:
@@ -192,6 +235,51 @@ def _section_from_payload(doc_id: str, payload: dict[str, Any]) -> NormSection:
         body=payload["body"],
         has_table=payload["has_table"],
     )
+
+
+# --- offline lexical search -------------------------------------------------------------
+# The AUTHORITATIVE implementation of docs/20 §6 is the Postgres one below (russian FTS:
+# websearch_to_tsquery + ts_rank_cd + ts_headline). The offline backend cannot call Postgres,
+# yet running without DATABASE_URL is mandatory project-wide (§3), so it approximates the same
+# behaviour: AND over query terms, density-damped ranking, one highlighted fragment. It does
+# NOT do morphology — instead each term is truncated to a fixed prefix, which covers the common
+# Russian inflections that matter here («напряжение»/«напряжения» → «напря») at the cost of
+# occasional over-matching. Ranks are therefore NOT comparable between backends; the ORDER is
+# pinned identically (rank desc, doc_id, ordinal) so both stay deterministic.
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+_STEM_PREFIX = 5
+_SNIPPET_WIDTH = 200
+_SNIPPET_LEAD = 60
+
+
+def _query_terms(query: str) -> list[str]:
+    normalized = unicodedata.normalize("NFC", query).lower()
+    terms = {w[:_STEM_PREFIX] for w in _WORD_RE.findall(normalized) if len(w) >= 2}
+    return sorted(terms)
+
+
+def _searchable(section: NormSection) -> str:
+    return " ".join([section.breadcrumb, section.heading or "", section.body])
+
+
+def _lexical_rank(text: str, terms: list[str]) -> float:
+    lowered = text.lower()
+    counts = [lowered.count(term) for term in terms]
+    if not counts or min(counts) == 0:
+        return 0.0  # AND semantics, like websearch_to_tsquery's default
+    return round(sum(counts) / (1.0 + len(lowered) / 1000.0), 6)
+
+
+def _lexical_snippet(text: str, terms: list[str]) -> str:
+    lowered = text.lower()
+    positions = [pos for pos in (lowered.find(term) for term in terms) if pos >= 0]
+    start = max(0, (min(positions) if positions else 0) - _SNIPPET_LEAD)
+    window = text[start : start + _SNIPPET_WIDTH]
+    pattern = re.compile("(" + "|".join(re.escape(t) for t in terms) + r")\w*", re.IGNORECASE)
+    marked = pattern.sub(lambda m: f"{SNIPPET_START}{m.group(0)}{SNIPPET_STOP}", window)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if start + _SNIPPET_WIDTH < len(text) else ""
+    return f"{prefix}{marked}{suffix}".strip()
 
 
 class JsonNormStore:
@@ -293,6 +381,46 @@ class JsonNormStore:
             LinkEdge(id=row["to_doc"], anchor=row["anchor"] or None)
             for row in snapshot["links"]
         ]
+
+    def search(
+        self,
+        query: str,
+        *,
+        doc_ids: list[str] | None = None,
+        limit: int = 20,
+        include_repealed: bool = False,
+    ) -> list[SearchHit]:
+        """Offline approximation of §6 — see the module comment on backend differences."""
+        terms = _query_terms(query)
+        if not terms:
+            return []  # empty query returns nothing, never the whole corpus
+        wanted = set(doc_ids) if doc_ids else None
+        scored: list[tuple[float, str, int, SearchHit]] = []
+        for record in self.list_documents():
+            doc = record.document
+            if wanted is not None and doc.id not in wanted:
+                continue
+            if doc.status == "repealed" and not include_repealed:
+                continue
+            for section in self.list_sections(doc.id):
+                text = _searchable(section)
+                rank = _lexical_rank(text, terms)
+                if rank <= 0.0 or not section.anchor or section.id is None:
+                    continue
+                hit = SearchHit(
+                    section_id=section.id,
+                    doc_id=doc.id,
+                    anchor=section.anchor,
+                    breadcrumb=section.breadcrumb,
+                    heading=section.heading,
+                    snippet=_lexical_snippet(text, terms),
+                    rank=rank,
+                    doc_status=doc.status,
+                    source_url=source_href(doc.source_url, section.anchor),
+                )
+                scored.append((rank, doc.id, section.ordinal, hit))
+        scored.sort(key=lambda row: (-row[0], row[1], row[2]))
+        return [row[3] for row in scored[:limit]]
 
 
 class PostgresNormStore:
@@ -447,6 +575,59 @@ class PostgresNormStore:
                 (doc_id,),
             )
             return [LinkEdge(id=row[0], anchor=row[1] or None) for row in cursor.fetchall()]
+
+    # ts_headline's StartSel/StopSel are passed explicitly (quoted, because the options string
+    # is comma-separated) instead of inheriting the server's `<b>`/`</b>` default — both
+    # backends must emit the same markers. The tsquery is computed once in FROM and reused by
+    # both the filter and the two ranking functions.
+    _SEARCH_SQL = """
+        SELECT s.id, s.doc_id, s.anchor, s.breadcrumb, s.heading,
+               ts_headline('russian',
+                   coalesce(s.breadcrumb,'') || ' ' || coalesce(s.heading,'') || ' ' || s.body,
+                   q,
+                   'StartSel="[[", StopSel="]]", MaxWords=35, MinWords=15, MaxFragments=1'),
+               ts_rank_cd(s.tsv, q) AS rank, d.status, d.source_url, s.ordinal
+        FROM norm_sections s
+        JOIN norm_documents d ON d.id = s.doc_id,
+             websearch_to_tsquery('russian', %(query)s) AS q
+        WHERE s.tsv @@ q
+          AND (%(doc_ids)s::text[] IS NULL OR s.doc_id = ANY(%(doc_ids)s::text[]))
+          AND (%(include_repealed)s OR d.status <> 'repealed')
+        ORDER BY rank DESC, s.doc_id, s.ordinal
+        LIMIT %(limit)s
+    """
+
+    def search(
+        self,
+        query: str,
+        *,
+        doc_ids: list[str] | None = None,
+        limit: int = 20,
+        include_repealed: bool = False,
+    ) -> list[SearchHit]:
+        """docs/20 §6, authoritative implementation: russian FTS with density ranking."""
+        import psycopg
+
+        if not query.strip():
+            return []
+        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+            cursor.execute(
+                self._SEARCH_SQL,
+                {
+                    "query": query,
+                    "doc_ids": list(doc_ids) if doc_ids else None,
+                    "include_repealed": include_repealed,
+                    "limit": limit,
+                },
+            )
+            return [
+                SearchHit(
+                    section_id=row[0], doc_id=row[1], anchor=row[2], breadcrumb=row[3],
+                    heading=row[4], snippet=row[5], rank=float(row[6]), doc_status=row[7],
+                    source_url=source_href(row[8], row[2]),
+                )
+                for row in cursor.fetchall()
+            ]
 
 
 def open_store(*, offline: bool = False, root: Path | str = Path("runs/norms")) -> NormStore:
