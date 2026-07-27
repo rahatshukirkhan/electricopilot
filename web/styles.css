@@ -454,3 +454,51 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
 }
+
+/* ============ norm library (docs/20 §10) ============ */
+.nlib-topnav { margin-left: auto; }
+.nlib-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+.nlib-side h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim, #667); }
+.nlib-doc-list { display: flex; flex-direction: column; gap: 6px; }
+.nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid #dde3ec; border-radius: 8px; background: #fff; cursor: pointer; }
+.nlib-doc:hover { border-color: #9fb3d0; }
+.nlib-doc.active { border-color: #3b6ea8; box-shadow: inset 3px 0 0 #3b6ea8; }
+.nlib-doc .t { font-weight: 500; line-height: 1.3; }
+.nlib-doc .m { font-size: 12px; color: #667; margin-top: 4px; }
+.nlib-status { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid; }
+.nlib-status.in_force { color: #1c6b3c; border-color: #a9d8bd; background: #eef8f2; }
+.nlib-status.repealed { color: #8a2020; border-color: #e2b1b1; background: #fdf0f0; }
+.nlib-status.unknown { color: #7a5a00; border-color: #e0cf9a; background: #fdf7e6; }
+/* §8.4: у отменённого документа сноска об утрате силы видна везде, где показан его текст */
+.nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #c05a5a; background: #fdf0f0; font-size: 13px; }
+.nlib-toc-group { margin-bottom: 14px; }
+.nlib-toc-group > h4 { margin: 0 0 6px; font-size: 13px; color: #3b6ea8; }
+.nlib-toc-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.nlib-anchor { border: 1px solid #dde3ec; border-radius: 6px; background: #fff; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.nlib-anchor:hover { border-color: #3b6ea8; }
+.nlib-anchor.has-table::after { content: ' ▦'; color: #3b6ea8; }
+.nlib-hit { border: 1px solid #dde3ec; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: #fff; }
+.nlib-hit:hover { border-color: #9fb3d0; }
+.nlib-hit .crumb { font-size: 12px; color: #667; }
+.nlib-hit mark { background: #fff3b0; padding: 0 1px; }
+.nlib-reader h3 { margin: 0 0 4px; }
+.nlib-reader .crumb { font-size: 12px; color: #667; margin-bottom: 10px; }
+.nlib-body p { margin: 0 0 10px; line-height: 1.55; }
+/* §10.4: секции с таблицами — моноширинно, горизонтальный скролл внутри блока */
+.nlib-body pre.nlib-table { font-family: 'Fira Code', ui-monospace, monospace; font-size: 12px;
+  background: #f7f9fc; border: 1px solid #e3e9f2; border-radius: 8px; padding: 10px;
+  overflow-x: auto; white-space: pre; margin: 0 0 10px; }
+.nlib-nav { display: flex; gap: 8px; margin-top: 12px; }
+/* [hidden] обязан побеждать: display у класса иначе перекрывает атрибут (панель висела открытой) */
+.nlib-panel[hidden], .nlib-results[hidden], .nlib-toc[hidden], .nlib-reader[hidden] { display: none; }
+.nlib-panel { position: fixed; top: 0; right: 0; width: min(520px, 92vw); height: 100vh;
+  background: #fff; border-left: 1px solid #dde3ec; box-shadow: -8px 0 24px rgba(20,30,50,.12);
+  z-index: 60; display: flex; flex-direction: column; }
+.nlib-panel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #e6ebf3; }
+.nlib-panel-title { font-weight: 500; flex: 1; font-size: 14px; }
+.nlib-panel-src { font-size: 12px; white-space: nowrap; }
+.nlib-panel-body { padding: 14px; overflow-y: auto; flex: 1; }
+.nlib-cite-open { font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid #b9cbe2;
+  border-radius: 5px; background: #f2f7fd; color: #24527f; cursor: pointer; }
+.nlib-cite-open:hover { border-color: #3b6ea8; }
+@media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; } }

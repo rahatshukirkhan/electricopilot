@@ -135,8 +135,22 @@ function route() {
   const ms = h.match(/^\/s\/([^/]+)$/);
   const mp = h.match(/^\/p\/([^/]+)\/print$/);
   const m = h.match(/^\/p\/([^/]+)(?:\/c\/([^/]+))?/);
-  ['dashboard', 'project', 'editor', 'print', 'shared'].forEach(s => $('screen-' + s).hidden = true);
+  ['dashboard', 'project', 'editor', 'print', 'shared', 'norms'].forEach(s => $('screen-' + s).hidden = true);
+  const mn = h.match(/^\/norms(?:\/([^/]+))?(?:\/([^/]+))?$/);
   $('advisory').hidden = mp ? true : false;
+  if (mn) {
+    show('norms');
+    crumbs([['Проекты', '#/'], ['Нормы', '#/norms']]);
+    topBadge(''); setSave(''); $('saveState').textContent = '';
+    loadNormDocs().then(() => {
+      if (mn[1] && mn[2]) return openNormSection(mn[1], mn[2]);
+      if (mn[1]) return openNormDoc(mn[1]);
+      NORMS.docId = null;
+      $('normToc').hidden = true; $('normReader').hidden = true;
+      $('normEmpty').hidden = $('normSearchInput').value.trim() ? true : false;
+    });
+    return;
+  }
   if (ms) {
     PROJ = null;
     show('shared');
@@ -555,7 +569,7 @@ function renderNormcheck(rep) {
       <span class="norm-sev" title="${esc(unchecked ? 'not_checked' : f.severity)}">${esc(label)}</span>
       <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
         <div class="norm-values">observed: ${esc(JSON.stringify(f.observed))}<br>required: ${esc(JSON.stringify(f.required))}</div>
-        <div class="norm-cite">${esc(citeText(f.citation))} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
+        <div class="norm-cite">${esc(citeText(f.citation))}${citeOpenButton(f.citation)} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
       </div>${open}</article>`;
   }).join('') : '<span class="dim">Нарушений и непроверенных правил не найдено.</span>';
   $('normIdentity').textContent = humanizeSections(`${rep.data_identity} ${rep.provenance_note} ${rep.signoff_notice} ${rep.disclaimer}`);
@@ -782,8 +796,10 @@ function renderSLD(s) {
 function renderTrace(r) {
   const dot = st => `<span class="st-dot st-${st}"></span>`;
   $('trace').innerHTML = r.audit_trace.map(s => {
-    const cites = (s.citations || []).map(c => `${c.standard}${c.clause ? ' §' + c.clause : ''}${c.table ? ' Табл.' + c.table : ''}`).join('; ');
-    return `<details class="step"><summary>${dot(s.status)}${esc(s.title)}</summary><div class="body">${s.formula ? `<div class="f">${esc(s.formula)}</div>` : ''}${s.computation ? `<div class="comp">${esc(s.computation)}</div>` : ''}${cites ? `<div class="cite">↳ ${esc(cites)}</div>` : ''}</div></details>`;
+    const cites = (s.citations || []).map(c =>
+      esc(`${c.standard}${c.clause ? ' §' + c.clause : ''}${c.table ? ' Табл.' + c.table : ''}`) + citeOpenButton(c)
+    ).join('; ');
+    return `<details class="step"><summary>${dot(s.status)}${esc(s.title)}</summary><div class="body">${s.formula ? `<div class="f">${esc(s.formula)}</div>` : ''}${s.computation ? `<div class="comp">${esc(s.computation)}</div>` : ''}${cites ? `<div class="cite">↳ ${cites}</div>` : ''}</div></details>`;
   }).join('');
 }
 function relayoutActive() { const el = document.querySelector('.tabs button.active'); if (!el) return; const id = el.dataset.tab; if (['tcc', 'sweep', 'vd', 'derating'].includes(id)) Plotly.Plots.resize($('plot_' + id)); }
@@ -996,3 +1012,142 @@ function migrateLegacy() {
   }
 }
 boot();
+
+// ========================= NORM LIBRARY (docs/20 §10) =========================
+// Читалка официальных текстов норм. Числа для расчёта сюда не приходят и отсюда не уходят:
+// движок берёт их только из датапаков (docs/20 §0, §8.3).
+const NORM_ST = { in_force: 'действует', repealed: 'утратил силу', unknown: 'статус неясен' };
+let NORMS = { docs: [], docId: null };
+
+const normBadge = (st) => `<span class="nlib-status ${esc(st)}" title="${esc(st)}">${esc(NORM_ST[st] || st)}</span>`;
+// Сниппет приходит с маркерами [[…]] от обоих бэкендов поиска: экранируем текст, потом подсвечиваем.
+const normSnippet = (s) => esc(s).replace(/\[\[(.+?)\]\]/g, '<mark>$1</mark>');
+// §8.4: плашка с дословной сноской об утрате силы — везде, где показан текст документа.
+const normNote = (d) => (d.status === 'repealed' && d.status_note)
+  ? `<div class="nlib-repealed-note">${esc(d.status_note)}</div>` : '';
+
+function normBody(section) {
+  if (section.has_table) return `<pre class="nlib-table">${esc(section.body)}</pre>`;
+  return section.body.split('\n\n').filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('');
+}
+
+async function normFetch(path, options) {
+  const r = await fetch(API + path, options);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // §8.2: честный отказ со списком того, что есть — без подстановки похожего документа.
+    const detail = body.detail || {};
+    throw new Error(detail.message || 'Библиотека норм недоступна');
+  }
+  return body;
+}
+
+async function loadNormDocs() {
+  try {
+    NORMS.docs = (await normFetch('/api/norms')).documents;
+  } catch (e) { NORMS.docs = []; }
+  const list = $('normDocList');
+  list.innerHTML = NORMS.docs.length ? NORMS.docs.map(d => `
+    <button class="nlib-doc ${d.id === NORMS.docId ? 'active' : ''}" data-doc="${esc(d.id)}">
+      <div class="t">${esc(d.title)}</div>
+      <div class="m">${normBadge(d.status)} · ${d.sections} п. · ${esc(d.id)}</div>
+    </button>`).join('')
+    : '<span class="dim">Библиотека пуста. Загрузите корпус: <code>electricopilot norms ingest</code>.</span>';
+}
+
+async function openNormDoc(docId) {
+  NORMS.docId = docId;
+  await loadNormDocs();
+  $('normResults').hidden = true; $('normEmpty').hidden = true; $('normReader').hidden = true;
+  const toc = $('normToc'); toc.hidden = false; toc.innerHTML = '<span class="dim">загружаю оглавление…</span>';
+  try {
+    const data = await normFetch('/api/norms/' + encodeURIComponent(docId));
+    toc.innerHTML = `<h3>${esc(data.document.title)} ${normBadge(data.document.status)}</h3>`
+      + normNote(data.document)
+      + data.toc.map(g => `<div class="nlib-toc-group">
+          <h4>${esc(g.breadcrumb || 'Без раздела')}</h4>
+          <ul>${g.sections.map(s => `<li><button class="nlib-anchor ${s.has_table ? 'has-table' : ''}"
+            data-doc="${esc(docId)}" data-anchor="${esc(s.anchor)}"
+            title="${esc(s.heading || s.anchor)}">${esc(s.heading ? s.heading.slice(0, 40) : s.anchor)}</button></li>`).join('')}</ul>
+        </div>`).join('');
+  } catch (e) { toc.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
+}
+
+async function openNormSection(docId, anchor) {
+  $('normToc').hidden = true; $('normResults').hidden = true; $('normEmpty').hidden = true;
+  const reader = $('normReader'); reader.hidden = false;
+  reader.innerHTML = '<span class="dim">загружаю пункт…</span>';
+  try {
+    const data = await normFetch(`/api/norms/${encodeURIComponent(docId)}/sections/${encodeURIComponent(anchor)}`);
+    const s = data.section, d = data.document;
+    reader.innerHTML = `<h3>${esc(s.heading || d.title)} ${normBadge(d.status)}</h3>
+      <div class="crumb">${esc(s.breadcrumb)} · <a href="${esc(s.source_url)}" target="_blank" rel="noopener">открыть на adilet.zan.kz ↗</a></div>
+      ${normNote(d)}<div class="nlib-body">${normBody(s)}</div>
+      <div class="nlib-nav">
+        <button class="ghost" data-doc="${esc(docId)}" data-back="1">← оглавление</button>
+        ${data.prev ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.prev.anchor)}">‹ пред</button>` : ''}
+        ${data.next ? `<button class="mini" data-doc="${esc(docId)}" data-anchor="${esc(data.next.anchor)}">след ›</button>` : ''}
+      </div>`;
+  } catch (e) { reader.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
+}
+
+async function runNormSearch(query) {
+  const box = $('normResults');
+  if (!query.trim()) { box.hidden = true; $('normEmpty').hidden = false; return; }
+  $('normToc').hidden = true; $('normReader').hidden = true; $('normEmpty').hidden = true;
+  box.hidden = false; box.innerHTML = '<span class="dim">ищу…</span>';
+  try {
+    const data = await normFetch('/api/norms/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: 30, include_repealed: $('normInclRepealed').checked }),
+    });
+    box.innerHTML = data.results.length ? data.results.map(h => `
+      <div class="nlib-hit" data-doc="${esc(h.doc_id)}" data-anchor="${esc(h.anchor)}">
+        <div class="crumb">${esc(h.breadcrumb || '—')} · ${normBadge(h.doc_status)}</div>
+        <div>${normSnippet(h.snippet)}</div>
+      </div>`).join('')
+      : '<span class="dim">Ничего не найдено. Пункт может быть в документе, которого нет в библиотеке.</span>';
+  } catch (e) { box.innerHTML = `<span class="dim">${esc(e.message)}</span>`; }
+}
+
+// --- боковая панель читалки: открывается по клику на цитату в отчёте/нормоконтроле (§10.3) ---
+async function openNormPanel(docId, anchor) {
+  const panel = $('normPanel');
+  panel.hidden = false;
+  $('normPanelTitle').textContent = 'загружаю пункт…';
+  $('normPanelBody').innerHTML = '';
+  $('normPanelSource').href = `https://adilet.zan.kz/rus/docs/${encodeURIComponent(docId)}#${encodeURIComponent(anchor)}`;
+  try {
+    const data = await normFetch(`/api/norms/${encodeURIComponent(docId)}/sections/${encodeURIComponent(anchor)}`);
+    const s = data.section, d = data.document;
+    $('normPanelTitle').innerHTML = `${esc(s.heading || d.title)} ${normBadge(d.status)}`;
+    $('normPanelSource').href = s.source_url;
+    $('normPanelBody').innerHTML = `<div class="crumb">${esc(s.breadcrumb)}</div>${normNote(d)}
+      <div class="nlib-body">${normBody(s)}</div>`;
+  } catch (e) {
+    $('normPanelTitle').textContent = 'Пункт недоступен';
+    $('normPanelBody').innerHTML = `<span class="dim">${esc(e.message)}</span>`;
+  }
+}
+
+// Цитата с doc_id+anchor становится ссылкой «открыть пункт»; без якоря рендерится как раньше (§9).
+function citeOpenButton(c) {
+  return (c && c.doc_id && c.anchor)
+    ? ` <button class="nlib-cite-open" data-cite-doc="${esc(c.doc_id)}" data-cite-anchor="${esc(c.anchor)}">открыть пункт</button>`
+    : '';
+}
+
+document.addEventListener('click', (e) => {
+  const cite = e.target.closest('[data-cite-doc]');
+  if (cite) { openNormPanel(cite.dataset.citeDoc, cite.dataset.citeAnchor); return; }
+  const doc = e.target.closest('.nlib-doc');
+  if (doc) { go('/norms/' + doc.dataset.doc); return; }
+  const hit = e.target.closest('[data-anchor]');
+  if (hit && hit.dataset.doc) { go(`/norms/${hit.dataset.doc}/${hit.dataset.anchor}`); return; }
+  const back = e.target.closest('[data-back]');
+  if (back) { go('/norms/' + back.dataset.doc); }
+});
+$('normPanelClose').addEventListener('click', () => { $('normPanel').hidden = true; });
+$('btnNorms').addEventListener('click', () => go('/norms'));
+$('normSearchInput').addEventListener('input', debounce((e) => runNormSearch(e.target.value), 300));
+$('normInclRepealed').addEventListener('change', () => runNormSearch($('normSearchInput').value));

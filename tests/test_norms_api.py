@@ -308,3 +308,46 @@ def test_norms_endpoints_do_not_require_a_database(
     monkeypatch.setattr(studio_api, "_NORM_STORE_OVERRIDE", store)
     with TestClient(studio_api.app) as local:
         assert local.get("/api/norms").status_code == 200
+
+
+# --------------------------------------------------------------------- §10 UI namespace
+
+
+def test_norm_library_styles_stay_in_their_own_namespace() -> None:
+    """Каждый селектор блока библиотеки обязан содержать класс `.nlib-*`.
+
+    Регрессия, которую это ловит: библиотека сначала стилизовала `.norm-panel`, а такой класс
+    уже носила панель нормоконтроля. Правила `position: fixed; height: 100vh; z-index: 60`
+    превратили её в оверлей поверх всей страницы, и клики по кнопкам щита перехватывались —
+    e2e падал таймаутом на «Share-ссылка», где ничего про нормы нет.
+    """
+    import re
+
+    css = (Path(__file__).parents[1] / "web" / "styles.css").read_text(encoding="utf-8")
+    marker = "/* ============ norm library (docs/20 §10) ============ */"
+    assert marker in css
+    block = re.sub(r"/\*.*?\*/", "", css.split(marker, 1)[1], flags=re.DOTALL)
+
+    offenders = []
+    for rule in re.findall(r"^([^{@}][^{}]*)\{", block, re.MULTILINE):
+        for selector in rule.split(","):
+            selector = selector.strip()
+            if selector and ".nlib-" not in selector:
+                offenders.append(selector)
+    assert offenders == [], f"селекторы вне пространства имён библиотеки: {offenders}"
+
+
+def test_norm_library_does_not_restyle_existing_classes() -> None:
+    """Классы, существовавшие до библиотеки, она не переопределяет."""
+    import re
+
+    root = Path(__file__).parents[1] / "web"
+    css = (root / "styles.css").read_text(encoding="utf-8")
+    marker = "/* ============ norm library (docs/20 §10) ============ */"
+    head, block = css.split(marker, 1)
+    head_rules = re.sub(r"/\*.*?\*/", "", head, flags=re.DOTALL)
+    pre_existing = set(re.findall(r"\.([a-z][\w-]*)", head_rules))
+    library = set(re.findall(r"\.(nlib-[\w-]*)", block))
+    assert not (library & pre_existing)
+    # панель нормоконтроля должна остаться обычным блоком в потоке страницы
+    assert ".norm-panel{margin-top:16px}" in head
