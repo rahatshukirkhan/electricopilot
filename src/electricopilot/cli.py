@@ -150,6 +150,53 @@ def demo(live: bool = typer.Option(False, "--live", help="использоват
                              prefer_jsonl=not live))
 
 
+norms_app = typer.Typer(add_completion=False, help="Нормативная библиотека (docs/20).")
+app.add_typer(norms_app, name="norms")
+
+
+@norms_app.command("ingest")
+def norms_ingest(
+    ids: Optional[list[str]] = typer.Argument(None, help="ID документов; пусто — весь реестр"),
+    refresh: bool = typer.Option(False, "--refresh", help="перекачать, игнорируя кэш HTML"),
+    offline: bool = typer.Option(False, "--offline", help="писать JSON-снапшоты вместо Neon"),
+) -> None:
+    """Загрузить документы реестра в библиотеку (docs/20 §4)."""
+    from .norms.ingest import ingest_corpus
+    from .norms.store import open_store
+
+    store = open_store(offline=offline)
+    reports = ingest_corpus(list(ids) if ids else None, store=store, refresh=refresh)
+    for report in reports:
+        mark = "обновлён" if report.changed else "без изменений"
+        typer.echo(
+            f"{report.doc_id}  {report.status:9}  секций {report.sections_written}"
+            f"  ссылок {report.links}  [{mark}]  {report.title[:60]}"
+        )
+        if report.sections_skipped:
+            typer.echo(
+                f"    ! пропущено фрагментов без якоря: {report.sections_skipped} "
+                "(в источнике нет метки пункта, синтетическую ставить запрещено — docs/20 §8.1)"
+            )
+
+
+@norms_app.command("list")
+def norms_list(
+    offline: bool = typer.Option(False, "--offline", help="читать JSON-снапшоты вместо Neon"),
+) -> None:
+    """Показать документы, уже лежащие в библиотеке."""
+    from .norms.store import open_store
+
+    records = open_store(offline=offline).list_documents()
+    if not records:
+        typer.echo("Библиотека пуста — запустите `electricopilot norms ingest`.")
+        return
+    for record in records:
+        typer.echo(
+            f"{record.document.id}  {record.document.status:9}  {record.kind:8}"
+            f"  секций {record.section_count:5}  {record.document.title[:60]}"
+        )
+
+
 @app.command()
 def packs() -> None:
     """Список доступных норм-пакетов (data/packs/)."""
