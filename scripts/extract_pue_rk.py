@@ -31,14 +31,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
-import httpx
-
 from electricopilot.data.loader import pack_key
+from electricopilot.norms.fetch import fetch_cached
 
 SOURCE_URL = "https://adilet.zan.kz/rus/docs/V1500010851"
 SOURCE_DOCUMENT = (
@@ -51,38 +48,14 @@ TAG_RE = re.compile(r"<[^>]+>")
 
 
 # --------------------------------------------------------------------------- fetch
+# Downloading lives in `electricopilot.norms.fetch` (docs/20 §4.1) — one fetcher for the whole
+# project, including the httpx→curl fallback for adilet's incomplete TLS chain. This script
+# keeps its own read-through `--cache` semantics via `fetch_cached`; the §4.2 integrity gate is
+# deliberately NOT applied here, because pack extraction has its own, stricter sanity checks
+# (per-table header assertions below) and its behaviour must stay unchanged by this refactor.
 
 def fetch_html(cache: Path | None) -> str:
-    if cache is not None and cache.is_file():
-        return cache.read_text(encoding="utf-8")
-    try:
-        resp = httpx.get(SOURCE_URL, headers={"User-Agent": "Mozilla/5.0"},
-                         timeout=60, follow_redirects=True)
-        resp.raise_for_status()
-        html = resp.text
-    except httpx.ConnectError:
-        # adilet.zan.kz serves an incomplete TLS chain (missing intermediate) that OpenSSL's
-        # root-only bundle can't complete, so httpx fails where curl (system trust store,
-        # builds the chain) succeeds. Fall back to curl — it STILL verifies the certificate
-        # (no -k), which matters for a norm source (a MITM must not swap in wrong values).
-        html = _fetch_via_curl()
-    if cache is not None:
-        cache.write_text(html, encoding="utf-8")
-    return html
-
-
-def _fetch_via_curl() -> str:
-    curl = shutil.which("curl")
-    if not curl:
-        raise RuntimeError(
-            "httpx could not verify the source's TLS chain and curl is not available. "
-            "Download the page manually (browser/curl) and pass it via --cache FILE.html."
-        )
-    out = subprocess.run(  # noqa: S603 - fixed argv, no shell, verified cert (no -k)
-        [curl, "-fsSL", "-A", "Mozilla/5.0", SOURCE_URL],
-        capture_output=True, timeout=120, check=True,
-    )
-    return out.stdout.decode("utf-8")
+    return fetch_cached(SOURCE_URL, cache)
 
 
 def _flat_text(html: str) -> str:
