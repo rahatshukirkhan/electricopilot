@@ -541,7 +541,7 @@ class NormDocument:
     status_conflict: str | None
     source_url: str
     content_sha256: str
-    meta: dict[str, str] = field(default_factory=dict)
+    meta: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -704,7 +704,7 @@ def parse_document(html: str, *, doc_id: str, source_url: str | None = None) -> 
 
     url = source_url or f"https://adilet.zan.kz/rus/docs/{doc_id}"
     digest = hashlib.sha256(unicodedata.normalize("NFC", parsed.markdown).encode("utf-8"))
-    meta: dict[str, str] = {}
+    meta: dict[str, str | int] = {}
     if parsed.freshness:
         meta["freshness"] = parsed.freshness
     if parsed.subtitle:
