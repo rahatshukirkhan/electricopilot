@@ -10,6 +10,8 @@ import json
 import os
 import re
 from contextlib import contextmanager
+from dataclasses import asdict
+from datetime import timezone
 from pathlib import Path
 from typing import Any, Optional, cast
 from urllib.parse import quote
@@ -44,6 +46,9 @@ from .llm.intake import intake_parse
 from .llm.verify import verify_deterministic_check, verify_review
 from .models import SizingRequest, SizingResult, VerificationVerdict
 from .normcheck import build_normcheck_report, narrate_findings
+from .norms.parse import NormDocument, NormSection, source_href
+from .norms.search import search_norms
+from .norms.store import DocumentRecord, NormStore, open_store
 from .project import build_project_report
 from .project_contract import Project, project_payload
 from .store import (
@@ -593,6 +598,182 @@ def project_export_endpoint(body: ProjectBody) -> Response:
         headers={"Content-Disposition":
                  f"attachment; filename=\"bundle.zip\"; filename*=UTF-8''{fname}"},
     )
+
+
+# --- norm library (docs/20 §7): read-only. Ingest stays CLI/offline, by spec. ---
+
+_NORM_STORE_OVERRIDE: NormStore | None = None
+
+
+def _norm_store() -> NormStore:
+    """Unlike `/api/projects`, the norm library must NEVER 503 for a missing DATABASE_URL:
+    docs/20 §3 makes the offline JSON backend a supported mode, not a test double."""
+    if _NORM_STORE_OVERRIDE is not None:
+        return _NORM_STORE_OVERRIDE
+    return open_store()
+
+
+def _norm_document_payload(record: DocumentRecord) -> dict[str, Any]:
+    """Document header for every surface that shows its text.
+
+    `status` and, for a repealed act, the verbatim `status_note` travel with EVERY response
+    (docs/20 §8.4) — the badge is worthless if it is attached only to search results.
+    """
+    doc = record.document
+    return {
+        "id": doc.id,
+        "title": doc.title,
+        "kind": record.kind,
+        "discipline": record.discipline,
+        "status": doc.status,
+        "status_note": doc.status_note,
+        "sections": record.section_count,
+        "source_url": doc.source_url,
+        "fetched_at": record.fetched_at.astimezone(timezone.utc).isoformat(),
+    }
+
+
+def _norm_section_payload(doc: NormDocument, section: NormSection) -> dict[str, Any]:
+    """A section is only ever exposed with its citation anchor (docs/20 §8.1).
+
+    `source_url` is built by `source_href`, which refuses to invent a fragment — never by
+    string concatenation.
+    """
+    return {
+        "section_id": section.id,
+        "doc_id": section.doc_id,
+        "anchor": section.anchor,
+        "ordinal": section.ordinal,
+        "breadcrumb": section.breadcrumb,
+        "heading": section.heading,
+        "body": section.body,
+        "has_table": section.has_table,
+        "source_url": source_href(doc.source_url, section.anchor),
+    }
+
+
+def _norm_abstention(doc_id: str) -> HTTPException:
+    """docs/20 §8.2: no such act in the corpus ⇒ say so and list what IS there.
+
+    Guessing a similar document or paraphrasing a norm from model memory is forbidden; the
+    honest, typed refusal is the product behaviour.
+    """
+    available = [
+        {"id": rec.document.id, "title": rec.document.title, "status": rec.document.status}
+        for rec in _norm_store().list_documents()
+    ]
+    return HTTPException(
+        status_code=404,
+        detail={
+            "ok": False,
+            "error": "norm_document_not_found",
+            "message": f"Документа {doc_id} нет в нормативной библиотеке.",
+            "available": available,
+        },
+    )
+
+
+@app.get("/api/norms")
+def norms_list_endpoint() -> dict[str, Any]:
+    """Corpus listing: id, title, status, section count."""
+    records = _norm_store().list_documents()
+    return {"ok": True, "documents": [_norm_document_payload(r) for r in records]}
+
+
+@app.get("/api/norms/{doc_id}")
+def norms_document_endpoint(doc_id: str) -> dict[str, Any]:
+    """Table of contents: breadcrumb groups with anchors and table flags."""
+    store = _norm_store()
+    record = store.get_document(doc_id)
+    if record is None:
+        raise _norm_abstention(doc_id)
+    toc: list[dict[str, Any]] = []
+    for section in store.list_sections(doc_id):
+        entry = {
+            "anchor": section.anchor,
+            "ordinal": section.ordinal,
+            "heading": section.heading,
+            "has_table": section.has_table,
+        }
+        if not toc or toc[-1]["breadcrumb"] != section.breadcrumb:
+            toc.append({"breadcrumb": section.breadcrumb, "sections": [entry]})
+        else:
+            toc[-1]["sections"].append(entry)
+    return {"ok": True, "document": _norm_document_payload(record), "toc": toc}
+
+
+@app.get("/api/norms/{doc_id}/sections/{anchor}")
+def norms_section_endpoint(doc_id: str, anchor: str) -> dict[str, Any]:
+    """One section plus its neighbours, for the reader's prev/next navigation."""
+    store = _norm_store()
+    record = store.get_document(doc_id)
+    if record is None:
+        raise _norm_abstention(doc_id)
+    sections = store.list_sections(doc_id)
+    index = next((i for i, s in enumerate(sections) if s.anchor == anchor), None)
+    if index is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "ok": False,
+                "error": "norm_section_not_found",
+                "message": f"В документе {doc_id} нет пункта с якорем {anchor}.",
+                "document": _norm_document_payload(record),
+            },
+        )
+    doc = record.document
+
+    def neighbour(offset: int) -> dict[str, Any] | None:
+        pos = index + offset
+        if pos < 0 or pos >= len(sections):
+            return None
+        near = sections[pos]
+        return {"anchor": near.anchor, "heading": near.heading, "breadcrumb": near.breadcrumb}
+
+    return {
+        "ok": True,
+        "document": _norm_document_payload(record),
+        "section": _norm_section_payload(doc, sections[index]),
+        "prev": neighbour(-1),
+        "next": neighbour(1),
+    }
+
+
+class NormSearchBody(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    doc_ids: Optional[list[str]] = Field(default=None, max_length=16)
+    limit: int = Field(default=20, ge=1, le=100)
+    include_repealed: bool = False
+
+
+@app.post("/api/norms/search")
+def norms_search_endpoint(body: NormSearchBody, request: Request) -> dict[str, Any]:
+    """Lexical search over the corpus (docs/20 §6).
+
+    Sections of repealed documents stay hidden unless `include_repealed` is set. The LLM
+    rerank only engages behind `NORMS_LLM_RERANK=1` with a key present; it sorts and nothing
+    else, and an invalid response leaves the lexical order in place.
+    """
+    cfg = get_config()
+    client: OpenRouterClient | None = None
+    if cfg.norms_llm_rerank and cfg.llm_available:
+        _admit_llm(request)
+        client = _client()
+    with _heavy_operation():
+        hits = search_norms(
+            _norm_store(),
+            body.query,
+            doc_ids=list(body.doc_ids) if body.doc_ids else None,
+            limit=body.limit,
+            include_repealed=body.include_repealed,
+            client=client,
+            model=cfg.model_fast,
+        )
+    return {
+        "ok": True,
+        "rerank": client is not None,
+        "results": [asdict(hit) for hit in hits],
+    }
 
 
 # --- static frontend (local dev; on Vercel the web/ dir is served as static) ---

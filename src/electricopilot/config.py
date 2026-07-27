@@ -48,6 +48,9 @@ class Config:
     llm_requests_per_window: int = 12
     llm_global_requests_per_window: int = 24
     llm_window_seconds: int = 60
+    # docs/20 §6: переранжирование выдачи библиотеки быстрой моделью. По умолчанию
+    # выключено — лексический порядок детерминирован, а модель здесь только сортирует.
+    norms_llm_rerank: bool = False
 
     @property
     def llm_available(self) -> bool:
@@ -89,4 +92,5 @@ def get_config() -> Config:
             "ELECTRICOPILOT_LLM_GLOBAL_REQUESTS_PER_WINDOW", 24
         ),
         llm_window_seconds=_positive_int("ELECTRICOPILOT_LLM_WINDOW_SECONDS", 60),
+        norms_llm_rerank=_bool("NORMS_LLM_RERANK", False),
     )
