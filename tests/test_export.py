@@ -198,7 +198,7 @@ def test_pue_rk_trust_status_is_consistent_in_every_document_surface():
     board = _board(1)
     board["norm_pack"] = "pue-rk"
     report = build_project_report(board)
-    expected = ["pue-rk", "v0.1.0", "public_standard", "NEEDS_REVIEW"]
+    expected = ["pue-rk", "v0.2.0", "public_standard", "NEEDS_REVIEW"]
     assert report["board"]["status"] == "NEEDS_REVIEW"
     assert report["norm_pack"]["verification_status"] == "NEEDS_REVIEW"
     assert "проверена инженером" not in report["provenance_note"]

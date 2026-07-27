@@ -5,9 +5,10 @@ must be reflected in docs/03 first (spec-first invariant).
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 # --- enums / aliases (docs/03 §3.1) ---
 Phase = Literal[1, 3]
@@ -32,11 +33,36 @@ CitationKey = Literal[
 
 # --- traceability (docs/03 §3.2) ---
 class Citation(BaseModel):
+    """Human-readable norm reference, optionally deep-linked into the norm library (docs/20 §9).
+
+    `doc_id`/`anchor` turn «ПУЭ РК, п. 40» into a link that opens the actual clause text. They
+    are OPTIONAL and backward-compatible: a citation without them renders exactly as before.
+    """
+
     standard: str
     clause: Optional[str] = None
     table: Optional[str] = None
     edition: Optional[str] = None
     note: Optional[str] = None
+    doc_id: Optional[str] = None  # 'V1500010851'
+    anchor: Optional[str] = None  # 'z1204'
+
+    @model_serializer(mode="wrap")
+    def _omit_unresolved_links(
+        self, handler: Callable[["Citation"], dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Drop `doc_id`/`anchor` when unset, so adding them changes no existing bytes.
+
+        A blanket `exclude_none=True` would satisfy docs/20 §9's wording but violate §12.5:
+        today's exported JSON carries `"clause": null` / `"edition": null` / `"note": null`, and
+        dropping those too would change every golden report and export byte-for-byte. Only the
+        two NEW fields are omitted while unresolved.
+        """
+        data = handler(self)
+        for key in ("doc_id", "anchor"):
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
 
 
 # --- input (docs/03 §3.3) ---

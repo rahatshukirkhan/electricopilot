@@ -107,6 +107,9 @@ class ManifestVerification(_ManifestModel):
     expected_calculation_id: str
     actual_calculation_id: str
     mismatches: list[str]
+    explanation: str | None = None
+    """Human-facing reason when the divergence is explainable rather than a broken calculation
+    (docs/20 §9): a pack version bump must not read to the user like the numbers moved."""
 
 
 def _build_identity(explicit: str | None = None) -> BuildIdentity:
@@ -258,4 +261,46 @@ def verify_calculation_manifest(
         expected_calculation_id=parsed.calculation_id,
         actual_calculation_id=actual.calculation_id,
         mismatches=mismatches,
+        explanation=_explain(parsed, actual, mismatches, pack),
+    )
+
+
+#: A divergence confined to these two is fully accounted for by the pack itself changing:
+#: the project input, the used data sections and the build all matched.
+_PACK_ONLY_MISMATCHES = {"norm_pack.sha256", "manifest_sha256"}
+
+
+def _explain(
+    parsed: CalculationManifest,
+    actual: CalculationManifest,
+    mismatches: list[str],
+    pack: DataPack,
+) -> str | None:
+    """Name the cause of an explainable divergence (docs/20 §9).
+
+    The PER-22 contract is NOT weakened: the hash still covers the whole pack, citations
+    included, so adding `doc_id`/`anchor` legitimately changes `calculation_id` for every
+    previously saved project. That is expected verification behaviour, not a bug — but the
+    user must be told WHY, instead of seeing what looks like a calculation that no longer
+    reproduces. The claim about what changed is quoted from the pack's own `source_note`;
+    this function does not assert on its own authority that the numbers held (docs/20 §12.5
+    proves that structurally in CI).
+    """
+    if not mismatches or set(mismatches) - _PACK_ONLY_MISMATCHES:
+        return None
+    if parsed.norm_pack.name != actual.norm_pack.name:
+        return (
+            f"Расчёт выполнен на другом паке норм: {parsed.norm_pack.name} → "
+            f"{actual.norm_pack.name}. Числа могли измениться — требуется пересчёт."
+        )
+    if parsed.norm_pack.version == actual.norm_pack.version:
+        return (
+            f"Пак {actual.norm_pack.name} той же версии {actual.norm_pack.version}, но с иным "
+            "содержимым — содержимое пака изменено без повышения версии, нужна проверка."
+        )
+    return (
+        f"Обновлён пак норм: {actual.norm_pack.name} {parsed.norm_pack.version} → "
+        f"{actual.norm_pack.version}. Входные данные проекта, состав использованных разделов "
+        f"и сборка совпали, поэтому расхождение вызвано версией пака, а не пересчётом. "
+        f"Изменение по описанию пака: {pack.meta.source_note}"
     )
