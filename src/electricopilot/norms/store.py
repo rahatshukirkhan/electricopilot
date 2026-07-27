@@ -89,6 +89,16 @@ class DocumentRecord:
 
 
 @dataclass(frozen=True)
+class ReadingView:
+    """Всё, что нужно читалке за ОДИН заход в хранилище (docs/20 §10.1)."""
+
+    headings: list[NormSection]
+    page: list[NormSection]
+    offset: int
+    total: int
+
+
+@dataclass(frozen=True)
 class UpsertOutcome:
     doc_id: str
     changed: bool  # content_sha256 differed from what was stored (sections were rewritten)
@@ -144,6 +154,10 @@ class NormStore(Protocol):
     def get_section(self, doc_id: str, anchor: str) -> NormSection | None: ...
 
     def links_from(self, doc_id: str) -> list[LinkEdge]: ...
+
+    def reading_view(
+        self, doc_id: str, *, anchor: str | None, offset: int, limit: int
+    ) -> ReadingView: ...
 
     def search(
         self,
@@ -373,6 +387,22 @@ class JsonNormStore:
                 return section
         return None
 
+    def reading_view(
+        self, doc_id: str, *, anchor: str | None, offset: int, limit: int
+    ) -> ReadingView:
+        sections = self.list_sections(doc_id)  # один разбор снапшота на весь ответ
+        if anchor is not None:
+            position = next((i for i, s in enumerate(sections) if s.anchor == anchor), None)
+            if position is not None:
+                offset = (position // limit) * limit
+        offset = max(0, min(offset, max(0, len(sections) - 1)))
+        return ReadingView(
+            headings=[s for s in sections if s.heading],
+            page=sections[offset : offset + limit],
+            offset=offset,
+            total=len(sections),
+        )
+
     def links_from(self, doc_id: str) -> list[LinkEdge]:
         snapshot = self._read(doc_id)
         if snapshot is None:
@@ -564,6 +594,58 @@ class PostgresNormStore:
                 return None
             return NormSection(doc_id=doc_id, anchor=row[0], ordinal=row[1], breadcrumb=row[2],
                                heading=row[3], body=row[4], has_table=row[5])
+
+    # Читалка листает документ постранично, поэтому тянуть все 7791 строки ПУЭ с телами ради
+    # 60 показанных — расточительно (замер: 1.6 с на запрос). Оглавлению тела не нужны вовсе,
+    # странице нужен только её срез: и то и другое делается в SQL.
+    _ROW = "anchor, ordinal, breadcrumb, heading, body, has_table"
+
+    @staticmethod
+    def _section(doc_id: str, row: Any) -> NormSection:
+        return NormSection(doc_id=doc_id, anchor=row[0], ordinal=row[1], breadcrumb=row[2],
+                           heading=row[3], body=row[4], has_table=row[5])
+
+    def reading_view(
+        self, doc_id: str, *, anchor: str | None, offset: int, limit: int
+    ) -> ReadingView:
+        """Оглавление, срез страницы и позиция якоря — в ОДНОМ соединении.
+
+        Отдельные соединения на каждый запрос стоили по ~0.8 с к Neon: четыре round-trip
+        превращали открытие главы в четыре секунды ожидания.
+        """
+        import psycopg
+
+        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM norm_sections WHERE doc_id = %s", (doc_id,))
+            row = cursor.fetchone()
+            total = int(row[0]) if row else 0
+
+            if anchor is not None:
+                cursor.execute(
+                    "SELECT count(*) FROM norm_sections WHERE doc_id = %s AND ordinal < "
+                    "(SELECT ordinal FROM norm_sections WHERE doc_id = %s AND anchor = %s)",
+                    (doc_id, doc_id, anchor),
+                )
+                found = cursor.fetchone()
+                if found is not None and found[0] is not None:
+                    offset = (int(found[0]) // limit) * limit
+            offset = max(0, min(offset, max(0, total - 1)))
+
+            cursor.execute(
+                "SELECT anchor, ordinal, breadcrumb, heading, '', has_table FROM norm_sections "
+                "WHERE doc_id = %s AND heading IS NOT NULL AND heading <> '' ORDER BY ordinal",
+                (doc_id,),
+            )
+            headings = [self._section(doc_id, r) for r in cursor.fetchall()]
+
+            cursor.execute(
+                f"SELECT {self._ROW} FROM norm_sections WHERE doc_id = %s "
+                "ORDER BY ordinal OFFSET %s LIMIT %s",
+                (doc_id, offset, limit),
+            )
+            page = [self._section(doc_id, r) for r in cursor.fetchall()]
+
+        return ReadingView(headings=headings, page=page, offset=offset, total=total)
 
     def links_from(self, doc_id: str) -> list[LinkEdge]:
         import psycopg
