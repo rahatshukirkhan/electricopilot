@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any, Callable, Protocol
 
-from ..data.loader import load_data_pack
+from ..data.loader import load_pack_by_name
 from ..exceptions import LlmConfigError, LlmError
 from ..llm.intake import intake_parse
 from ..project import build_project_report
@@ -89,7 +89,7 @@ def run_copilot(
     """Run a bounded tool loop and return a proposal without mutating the input project."""
     started = clock()
     canonical = validate_project(project)
-    pack = load_data_pack(canonical.norm_pack)
+    pack = load_pack_by_name(canonical.norm_pack)
     baseline = report_tool_payload(build_project_report(canonical, data_pack=pack))
     evidence: list[Any] = [baseline]
     messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM}]
