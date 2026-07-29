@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from .project_contract import Project, project_payload, validate_project
 
@@ -66,6 +67,16 @@ class ProjectConflictError(Exception):
 
 class ProjectNotFoundError(Exception):
     """The project does not exist in the caller's workspace."""
+
+
+class ProjectStoreNotInitializedError(Exception):
+    """`DATABASE_URL` points at a database where the phase-4 tables were never created.
+
+    Found in production 2026-07-29: the DSN was configured, `scripts/init_db.py` had never
+    been run, and every project/share call answered a bare 500 while `/api/health` reported
+    the store as available. A missing migration is an operator condition, not a bug in the
+    request — it deserves a typed 503, and `/api/health` must not advertise the store.
+    """
 
 
 class ProjectStore(Protocol):
@@ -153,18 +164,52 @@ class MemoryStore:
         return self.get(owner, record.project.id)
 
 
+#: Connections are opened per operation (no pool, by serverless design). Without a bound a
+#: single unreachable-database request keeps the function alive to `maxDuration`; with it the
+#: caller gets a fast, honest failure.
+CONNECT_TIMEOUT_SECONDS = 5
+
+
 class PostgresStore:
     """Neon/Postgres implementation; every operation uses one short connection."""
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, *, connect_timeout: int = CONNECT_TIMEOUT_SECONDS) -> None:
         if not dsn.strip():
             raise ValueError("Postgres DSN must not be empty")
         self._dsn = dsn
+        self._connect_timeout = connect_timeout
 
-    def init_schema(self) -> None:
+    @contextmanager
+    def _connect(self) -> Iterator[Any]:
+        """One bounded connection; a missing schema becomes a typed error, not a 500."""
         import psycopg
 
-        with psycopg.connect(self._dsn) as conn:
+        try:
+            with psycopg.connect(self._dsn, connect_timeout=self._connect_timeout) as conn:
+                yield conn
+        except psycopg.errors.UndefinedTable as exc:
+            raise ProjectStoreNotInitializedError(str(exc).splitlines()[0]) from None
+
+    def schema_ready(self) -> bool:
+        """True only if the project/share tables actually exist.
+
+        `DATABASE_URL` being set proves nothing about the schema — that gap is exactly what
+        made `/api/health` claim `project_store: neon` against a database without the tables.
+        """
+        import psycopg
+
+        try:
+            with self._connect() as conn, conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT to_regclass('public.projects'), to_regclass('public.shares')"
+                )
+                row = cursor.fetchone()
+                return bool(row and row[0] is not None and row[1] is not None)
+        except (psycopg.Error, ProjectStoreNotInitializedError, OSError):
+            return False
+
+    def init_schema(self) -> None:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(PROJECT_STORE_DDL)
             conn.commit()
@@ -175,9 +220,7 @@ class PostgresStore:
         return _canonical_record(validate_project(payload), _timestamp(updated_at))
 
     def list(self, workspace: str) -> list[ProjectRecord]:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT data, updated_at FROM projects WHERE workspace = %s "
                 "ORDER BY updated_at DESC, id DESC",
@@ -186,9 +229,7 @@ class PostgresStore:
             return [self._record(data, updated_at) for data, updated_at in cursor.fetchall()]
 
     def get(self, workspace: str, project_id: str) -> ProjectRecord | None:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT data, updated_at FROM projects WHERE id = %s AND workspace = %s",
                 (project_id, workspace),
@@ -197,11 +238,10 @@ class PostgresStore:
             return self._record(row[0], row[1]) if row else None
 
     def put(self, workspace: str, project: Project) -> ProjectRecord:
-        import psycopg
         from psycopg.types.json import Jsonb
 
         incoming = _canonical_record(project)
-        with psycopg.connect(self._dsn) as conn:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     "SELECT workspace, data, updated_at FROM projects WHERE id = %s FOR UPDATE",
@@ -232,9 +272,7 @@ class PostgresStore:
         return incoming
 
     def delete(self, workspace: str, project_id: str) -> bool:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     "DELETE FROM projects WHERE id = %s AND workspace = %s",
@@ -245,10 +283,8 @@ class PostgresStore:
         return deleted
 
     def share(self, workspace: str, project_id: str) -> str:
-        import psycopg
-
         token = secrets.token_urlsafe(32)
-        with psycopg.connect(self._dsn) as conn:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     "SELECT 1 FROM projects WHERE id = %s AND workspace = %s",
@@ -264,9 +300,7 @@ class PostgresStore:
         return token
 
     def get_shared(self, token: str) -> ProjectRecord | None:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT p.data, p.updated_at FROM shares s "
                 "JOIN projects p ON p.id = s.project_id WHERE s.token = %s",

@@ -26,8 +26,8 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from .config import get_config
 from .admission import admission, rejected
-from .copilot import CopilotRequest, run_copilot
-from .data.loader import DataPack, list_packs, load_data_pack
+from .copilot import CopilotRequest, CopilotResponse, run_copilot
+from .data.loader import DataPack, list_packs, load_data_pack, load_pack_by_name
 from .engine import size
 from .exceptions import (
     DataPackError,
@@ -57,6 +57,7 @@ from .store import (
     ProjectNotFoundError,
     ProjectRecord,
     ProjectStore,
+    ProjectStoreNotInitializedError,
 )
 from .viz import build_visuals
 
@@ -120,6 +121,23 @@ async def _typed_project_validation_error(
     return await request_validation_exception_handler(request, exc)
 
 
+@app.exception_handler(ProjectStoreNotInitializedError)
+async def _project_store_not_initialized(
+    request: Request,
+    exc: ProjectStoreNotInitializedError,
+) -> Response:
+    """A database without the phase-4 tables is an operator condition, not a 500."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": {
+            "ok": False,
+            "error": "project_store_not_initialized",
+            "message": "Хранилище проектов не инициализировано на сервере "
+                       "(нужен прогон scripts/init_db.py).",
+        }},
+    )
+
+
 def _allowed_origins() -> list[str]:
     """Cross-origin allowlist for the API, from ELECTRICOPILOT_ALLOWED_ORIGINS
     (comma-separated). The Studio UI is served same-origin (const API = ''), so
@@ -170,15 +188,28 @@ def _heavy_operation() -> Any:
         admission.release_heavy()
 
 
+def _project_store_mode() -> str:
+    """What the browser may rely on: 'neon' only when the tables are really there.
+
+    Reporting availability off `DATABASE_URL` alone was wrong in production — the DSN was
+    set, `scripts/init_db.py` had never run, so the frontend enabled sync (app.js reads this
+    field) against a schema-less database and every write answered 500.
+    """
+    if _PROJECT_STORE_OVERRIDE is not None:
+        # Injected in-process by tests only; lets the real browser exercise the sync paths.
+        return "neon"
+    cfg = get_config()
+    if not cfg.db_available:
+        return "local"
+    return "neon" if PostgresStore(cfg.database_url).schema_ready() else "local"
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     cfg = get_config()
     return {"status": "ok", "mode": "live" if cfg.llm_available else "fallback",
             "model_fast": cfg.model_fast, "model_strong": cfg.model_strong,
-            # The in-memory override is only injected by tests in-process. Reporting it as
-            # available lets the real browser exercise the same sync/share paths as Neon;
-            # normal application processes can only reach this branch via DATABASE_URL.
-            "project_store": "neon" if _PROJECT_STORE_OVERRIDE is not None or cfg.db_available else "local"}
+            "project_store": _project_store_mode()}
 
 
 @app.get("/api/packs")
@@ -200,8 +231,14 @@ def packs_endpoint() -> list[dict[str, Any]]:
 
 
 def _pack_or_400(pack: Optional[str]) -> DataPack:
+    """Resolve `?pack=` / `project.norm_pack` — a bundled NAME only, never a path.
+
+    `load_data_pack` treats any value containing '/' or ending in '.json' as a filesystem
+    path (docs/12 §1.1, a CLI affordance). Reachable from HTTP that made every public
+    endpoint read arbitrary server files, so the API resolves through `load_pack_by_name`.
+    """
     try:
-        return load_data_pack(pack) if pack else load_data_pack()
+        return load_pack_by_name(pack or None)
     except DataPackError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
@@ -321,7 +358,10 @@ def copilot_endpoint(body: CopilotRequest, request: Request) -> dict[str, Any]:
             "error": "no_key",
         }
     _admit_llm(request)
-    response = run_copilot(
+    # run_copilot resolves the project's pack itself, so an unknown pack surfaced here as an
+    # unhandled 500 while every other endpoint answered a typed 400.
+    response: CopilotResponse = _catch_project_error(
+        run_copilot,
         body.project,
         body.message,
         body.history,
