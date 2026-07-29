@@ -398,10 +398,17 @@ def load_pack_by_name(name: str | None) -> DataPack:
     """
     if name is None:
         return _load_pack_by_name(DEFAULT_PACK_NAME)
-    if name not in {meta.name for meta in list_packs()}:
+    if name not in _bundled_pack_names():
         # The rejected value is never echoed back: it is attacker-controlled text.
         raise DataPackError("unknown norm pack; use one of the bundled packs (see /api/packs)")
     return _load_pack_by_name(name)
+
+
+@lru_cache(maxsize=1)
+def _bundled_pack_names() -> frozenset[str]:
+    """Bundled pack names, cached for the process — packs ship with the package and cannot
+    change at runtime, and this set is consulted on every public request."""
+    return frozenset(meta.name for meta in list_packs())
 
 
 def list_packs() -> list[DataPackMeta]:

@@ -188,6 +188,9 @@ def _heavy_operation() -> Any:
         admission.release_heavy()
 
 
+_SCHEMA_CONFIRMED = False
+
+
 def _project_store_mode() -> str:
     """What the browser may rely on: 'neon' only when the tables are really there.
 
@@ -201,7 +204,17 @@ def _project_store_mode() -> str:
     cfg = get_config()
     if not cfg.db_available:
         return "local"
-    return "neon" if PostgresStore(cfg.database_url).schema_ready() else "local"
+    global _SCHEMA_CONFIRMED
+    if _SCHEMA_CONFIRMED:
+        return "neon"
+    # Health runs on every page load, so the positive answer is remembered for the process:
+    # the tables cannot vanish under a running deployment, and a transient Neon blip must not
+    # silently demote the browser to localStorage-only. A negative answer is NOT cached — the
+    # migration can land while this instance is warm.
+    if PostgresStore(cfg.database_url).schema_ready():
+        _SCHEMA_CONFIRMED = True
+        return "neon"
+    return "local"
 
 
 @app.get("/api/health")

@@ -107,3 +107,27 @@ def test_load_pack_by_name_rejects_paths_but_load_data_pack_keeps_the_cli_afford
         load_pack_by_name("no-such-pack")
     assert load_pack_by_name(None).meta.name == "iec-stub"
     assert load_pack_by_name("pue-rk").meta.name == "pue-rk"
+
+
+def test_import_schedule_form_field_never_reaches_the_filesystem() -> None:
+    """Третий канал ввода — multipart-форма; парсится иначе, проверяется отдельно."""
+    csv_bytes = "ref,мощность квт,длина м\nC1,2,20\n".encode("utf-8")
+    response = client.post(
+        "/api/import-schedule",
+        files={"file": ("schedule.csv", csv_bytes, "text/csv")},
+        data={"norm_pack": "/etc/hosts", "confirmed": "false"},
+    )
+    assert response.status_code == 400
+    assert "/etc/hosts" not in json.dumps(response.json(), ensure_ascii=False)
+
+
+def test_norm_store_connections_are_bounded_like_the_project_store() -> None:
+    """Норм-API публичный и без квоты: недоступная БД не должна держать функцию до
+    maxDuration. Раньше `connect_timeout` был только у стора проектов."""
+    import inspect
+
+    from electricopilot.norms.store import PostgresNormStore
+
+    source = inspect.getsource(PostgresNormStore)
+    assert "connect_timeout=self._connect_timeout" in source
+    assert "psycopg.connect(self._dsn)" not in source
