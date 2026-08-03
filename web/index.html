@@ -8,333 +8,356 @@
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-<header class="topbar">
-  <div class="brand" id="homeLink" title="К проектам">
-    <svg class="bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg>
-    ElectriCopilot <span>Studio</span>
-  </div>
-  <nav class="crumbs" id="crumbs"></nav>
-  <button id="btnNorms" class="ghost nlib-topnav" title="Нормативная библиотека">Нормы</button>
-  <div class="save" id="saveState" title="Автосохранение">сохранено</div>
-  <div id="statusBadge" class="badge">—</div>
-  <div class="mode" id="modeTag" title="Режим LLM">…</div>
-</header>
-<div class="advisory" id="advisory">
-  Рекомендательно · значения норм-таблиц <b>синтетические</b> (не IEC) · ссылки на пункты IEC <b>реальные</b> ·
-  результат требует <b>подписи инженера</b>.
-</div>
-
-<main>
-  <!-- ============ DASHBOARD ============ -->
-  <section id="screen-dashboard" class="screen">
-    <div class="dash-head">
-      <h2>Проекты — щиты</h2>
-      <div class="dash-actions">
-        <input id="dashSearch" placeholder="поиск…" />
-        <button id="btnNewProject" class="primary">+ Новый щит</button>
-        <button id="btnSample" class="ghost">Загрузить пример</button>
-        <label class="ghost filebtn">Импорт щита из XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
-        <label class="ghost filebtn">Открыть файл проекта<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
-      </div>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand-mark">
+      <svg class="bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg>
+      <span class="brand-text">ElectriCopilot <b>Studio</b></span>
     </div>
-    <section id="importReview" class="panel import-review" hidden>
-      <div class="panel-h">
-        Проверка импорта XLSX/CSV
-        <button id="btnImportCancel" class="ghost">Закрыть</button>
-      </div>
-      <p id="importSource" class="dim"></p>
-      <div id="importIssues" class="import-issues"></div>
-      <div class="import-grid">
-        <div>
-          <h3>Сопоставление колонок</h3>
-          <table class="import-table"><thead><tr><th>Колонка файла</th><th>Поле проекта</th><th>Источник</th></tr></thead><tbody id="importMappingBody"></tbody></table>
-        </div>
-        <div>
-          <h3>Предпросмотр исходных строк</h3>
-          <div id="importPreview" class="import-preview"></div>
-        </div>
-      </div>
-      <div>
-        <h3>R11 — заявлено / требуется по расчёту</h3>
-        <div id="importDiff" class="import-diff"></div>
-      </div>
-      <label class="import-confirm"><input id="importConfirm" type="checkbox" /> Я проверил сопоставление колонок и подтверждаю отмеченные допущения. Результат остаётся не подписанным (рекомендательным).</label>
-      <div class="import-actions">
-        <button id="btnImportRemap" class="ghost">Пересчитать с этим сопоставлением</button>
-        <button id="btnImportCreate" class="primary" disabled>Создать проект</button>
-      </div>
-      <p id="importIdentity" class="disclaimer"></p>
-    </section>
-    <div id="projectGrid" class="cards"></div>
-  </section>
-
-  <!-- ============ READ-ONLY SHARE ============ -->
-  <section id="screen-shared" class="screen" hidden>
-    <div class="shared-head">
-      <div>
-        <div class="badge review" title="READ-ONLY · UNSIGNED_ADVISORY">Только просмотр · не подписано</div>
-        <h2 id="sharedName">Загрузка share-ссылки…</h2>
-        <p id="sharedMeta" class="dim"></p>
-      </div>
-      <p class="shared-warning">Анонимная ссылка даёт чтение любому получателю. Изменение,
-        подпись и экспорт здесь отключены; инженерные значения заново рассчитаны сервером.</p>
+    <nav class="side-nav">
+      <button id="homeLink" class="side-nav-item" title="К проектам">
+        <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Проекты
+      </button>
+      <button id="btnNorms" class="side-nav-item nlib-topnav" title="Нормативная библиотека">
+        <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5V4.5Z"/><path d="M4 19a2.5 2.5 0 0 1 2.5-2.5H20"/></svg>
+        Нормы
+      </button>
+    </nav>
+    <div class="side-status">
+      <div id="modeTag" class="mode" title="Режим LLM">…</div>
+      <div id="saveState" class="save" title="Автосохранение">сохранено</div>
     </div>
-    <div class="sched-wrap">
-      <table class="schedule">
-        <thead><tr>
-          <th>Ref</th><th>Описание</th><th>P,кВт</th><th class="no-caps">cos φ</th><th>Фаза</th><th>IB,A</th>
-          <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th>
-        </tr></thead>
-        <tbody id="sharedScheduleBody"></tbody>
-      </table>
-    </div>
-    <div class="totals" id="sharedTotals"></div>
-    <section class="panel sld-panel">
-      <div class="panel-h">Однолинейная схема · свежий серверный отчёт</div>
-      <div id="sharedSld" class="sld-preview"></div>
-    </section>
-    <div class="disclaimer" id="sharedIdentity"></div>
-  </section>
+  </aside>
 
-  <!-- ============ PROJECT / BOARD ============ -->
-  <section id="screen-project" class="screen" hidden>
-    <div class="board-head">
-      <div class="board-id">
-        <input id="b_name" class="board-name" />
-        <div class="board-sub">
-          <input id="b_ref" placeholder="DB-1" title="Обозначение щита" />
-          <input id="b_location" placeholder="расположение" title="Расположение" />
-          <span class="supply" id="b_supply"></span>
-          <select id="b_pack" title="Норм-пакет"></select>
-          <span class="badge small" id="b_packStatus"></span>
-        </div>
-      </div>
-      <div class="board-actions">
-        <span id="boardRollup" class="badge">—</span>
-        <button id="btnNormcheck" class="primary" title="Детерминированная проверка R01–R10"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>Нормоконтроль</button>
-        <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>Пакет документов</button>
-        <button id="btnPrint" class="ghost" title="Печатная страница / PDF"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
-        <button id="btnReport" class="ghost">Отчёт по щиту</button>
-        <button id="btnShare" class="ghost"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Share-ссылка</button>
-        <button id="btnExportProj" class="ghost">Сохранить файл проекта</button>
-        <button id="btnBackDash" class="ghost">← К проектам</button>
-      </div>
+  <div class="workspace">
+    <header class="topbar">
+      <nav class="crumbs" id="crumbs"></nav>
+      <div id="statusBadge" class="badge">—</div>
+    </header>
+    <div class="advisory" id="advisory">
+      Рекомендательно · значения норм-таблиц <b>синтетические</b> (не IEC) · ссылки на пункты IEC <b>реальные</b> ·
+      результат требует <b>подписи инженера</b>.
     </div>
 
-    <div class="sched-wrap">
-      <table class="schedule">
-        <thead><tr>
-          <th>Ref</th><th>Описание</th><th>P,кВт</th><th class="no-caps">cos φ</th><th>Фаза</th><th>IB,A</th>
-          <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th><th></th>
-        </tr></thead>
-        <tbody id="scheduleBody"></tbody>
-      </table>
-    </div>
-
-    <div class="quickadd">
-      <button id="btnAddCircuit" class="primary">+ Добавить цепь</button>
-      <input id="nlQuick" placeholder="или опиши цепь словами: «розетки кухни 3.6 кВт, 230 В, PVC медь метод C, 18 м, автомат C, КЗ 6 кА»" />
-      <button id="btnNlAdd" class="ghost">Разобрать и добавить</button>
-    </div>
-
-    <div class="totals" id="boardTotals"></div>
-
-    <section class="panel board-copilot" id="boardCopilot">
-      <div class="panel-h">
-        Копилот щита · только предложения
-        <span class="badge review" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
-      </div>
-      <div id="boardCopilotMessages" class="chat board-chat">
-        <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
-      </div>
-      <div class="chatbar">
-        <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер 5 кВт на L2 и покажи, что изменится"></textarea>
-        <button id="boardCopilotSend" class="primary">Отправить</button>
-      </div>
-      <div id="boardProposal" class="proposal" hidden>
-        <div id="boardProposalDiff"></div>
-        <p id="boardProposalIdentity" class="disclaimer"></p>
-        <div class="row btns">
-          <button id="boardProposalApply" class="primary">Применить</button>
-          <button id="boardProposalReject" class="ghost">Отклонить</button>
-        </div>
-      </div>
-      <button id="boardProposalUndo" class="ghost" hidden>Отменить последнее применение копилота</button>
-    </section>
-
-    <section class="panel norm-panel">
-      <div class="panel-h">
-        Нормоконтроль
-        <span id="normSummary" class="norm-summary dim">не запускался</span>
-      </div>
-      <div id="normFindings" class="norm-findings">
-        <span class="dim">Нажми «Нормоконтроль»: правила пересчитают проект на сервере и не используют сохранённые клиентские результаты.</span>
-      </div>
-      <div id="normIdentity" class="norm-identity"></div>
-    </section>
-
-    <section class="panel sld-panel">
-      <div class="panel-h">Однолинейная схема
-        <button id="btnSldRefresh" class="ghost" style="margin-left:auto">Обновить предпросмотр</button>
-      </div>
-      <div id="sldPreview" class="sld-preview"><span class="dim">Нажми «Обновить предпросмотр» или добавь цепь.</span></div>
-    </section>
-
-    <div class="disclaimer" id="projDisclaimer"></div>
-  </section>
-
-  <!-- ============ NORM LIBRARY (docs/20 §10) ============ -->
-  <section id="screen-norms" class="screen" hidden>
-    <div class="dash-head">
-      <h2>Нормы</h2>
-      <div class="dash-actions">
-        <input id="normSearchInput" placeholder="поиск по тексту норм…" />
-        <label class="ghost checkbox"><input id="normInclRepealed" type="checkbox" /> показывать утратившие силу</label>
-      </div>
-    </div>
-    <p class="dim">Официальные тексты с adilet.zan.kz. Числа для расчёта берутся только из датапаков — тексты здесь для чтения человеком.</p>
-    <div class="nlib-layout">
-      <aside class="nlib-side">
-        <h3>Документы</h3>
-        <div id="normDocList" class="nlib-doc-list"></div>
-      </aside>
-      <div id="normToc" class="nlib-toc" hidden></div>
-      <div class="nlib-main">
-        <div id="normResults" class="nlib-results" hidden></div>
-        <div id="normReader" class="nlib-reader" hidden></div>
-        <div id="normEmpty" class="empty">Выберите документ слева или найдите пункт поиском.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ PRINT ============ -->
-  <section id="screen-print" class="screen" hidden>
-    <div id="printRoot" class="print-root"></div>
-  </section>
-
-  <!-- ============ CIRCUIT EDITOR ============ -->
-  <section id="screen-editor" class="screen" hidden>
-    <div class="editor-bar">
-      <button id="btnBackPanel" class="ghost">← К щиту</button>
-      <div class="ed-nav"><button id="btnPrev" class="mini">‹ пред</button><span id="edRef"></span><button id="btnNext" class="mini">след ›</button></div>
-      <div class="ed-right">
-        <span id="edSignoff" class="badge small" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
-        <button id="btnSign" class="ghost">Подписать цепь</button>
-        <button id="btnSaveCircuit" class="primary">Сохранить в щит</button>
-      </div>
-    </div>
-
-    <div class="grid">
-      <aside class="col left">
-        <section class="panel">
-          <div class="panel-h">Параметры цепи</div>
-          <div class="form">
-            <fieldset class="fgroup">
-              <legend>Нагрузка</legend>
-              <div class="row">
-                <label>Ref <input id="f_ref" placeholder="L1" /></label>
-                <label>Название <input id="f_desc" value="Цепь" /></label>
-              </div>
-              <div class="row">
-                <label>Ввод <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select></label>
-                <label id="wrap_power">P, Вт <input id="f_power" type="number" value="3680" /></label>
-                <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
-              </div>
-              <div class="row">
-                <label>U, В <input id="f_voltage" type="number" value="230" /></label>
-                <label>Фаз <select id="f_phases"><option selected>1</option><option>3</option></select></label>
-                <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.95" /></label>
-              </div>
-              <div class="row">
-                <label>Назначение <select id="f_purpose"><option value="lighting">освещение</option><option value="power">силовая</option><option value="socket" selected>розетки</option><option value="motor">двигатель</option><option value="general">прочее</option></select></label>
-                <label>Фаза щита <select id="f_phase"><option>L1</option><option>L2</option><option>L3</option><option value="L1L2L3">3ф</option></select></label>
-              </div>
-            </fieldset>
-            <fieldset class="fgroup">
-              <legend>Кабель и прокладка</legend>
-              <div class="row">
-                <label>Метод <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select></label>
-                <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
-                <label>Изоляция <select id="f_insulation"><option selected>PVC</option><option>XLPE</option></select></label>
-              </div>
-              <div class="row">
-                <label>t окр., °C <input id="f_ambient" type="number" value="30" /></label>
-                <label>Групп. <input id="f_grouping" type="number" value="1" /></label>
-                <label>Длина, м <input id="f_length" type="number" value="18" /></label>
-              </div>
-              <div class="row">
-                <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
-              </div>
-            </fieldset>
-            <fieldset class="fgroup">
-              <legend>Защита</legend>
-              <div class="row">
-                <label>Аппарат <select id="f_device"><option value="MCB" selected>Автомат (MCB)</option><option value="MCCB">Автомат в литом корпусе (MCCB)</option><option value="gG_fuse">Предохранитель gG</option></select></label>
-                <label id="wrap_curve">Характеристика <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
-              </div>
-              <div class="row">
-                <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
-                <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
-              </div>
-            </fieldset>
-            <fieldset class="fgroup">
-              <legend>Короткое замыкание</legend>
-              <div class="row">
-                <label>I КЗ, А <input id="f_iscc" type="number" value="3000" /></label>
-                <label title="время отключения аппарата для проверки КЗ (мгновенная зона ≈0.01 с; не путать с 0.4 с ADS)">t КЗ, с <input id="f_tdisc" type="number" step="0.01" value="0.01" /></label>
-              </div>
-            </fieldset>
-            <div class="row btns"><button id="recalc" class="ghost">Пересчитать</button></div>
+    <main>
+      <!-- ============ DASHBOARD ============ -->
+      <section id="screen-dashboard" class="screen">
+        <div class="dash-head">
+          <h2>Проекты — щиты</h2>
+          <div class="dash-actions">
+            <input id="dashSearch" placeholder="поиск…" />
+            <button id="btnNewProject" class="primary">+ Новый щит</button>
+            <button id="btnSample" class="ghost">Загрузить пример</button>
+            <label class="ghost filebtn">Импорт щита из XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
+            <label class="ghost filebtn">Открыть файл проекта<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
           </div>
+        </div>
+        <section id="importReview" class="panel import-review" hidden>
+          <div class="panel-h">
+            Проверка импорта XLSX/CSV
+            <button id="btnImportCancel" class="ghost">Закрыть</button>
+          </div>
+          <p id="importSource" class="dim"></p>
+          <div id="importIssues" class="import-issues"></div>
+          <div class="import-grid">
+            <div>
+              <h3>Сопоставление колонок</h3>
+              <table class="import-table"><thead><tr><th>Колонка файла</th><th>Поле проекта</th><th>Источник</th></tr></thead><tbody id="importMappingBody"></tbody></table>
+            </div>
+            <div>
+              <h3>Предпросмотр исходных строк</h3>
+              <div id="importPreview" class="import-preview"></div>
+            </div>
+          </div>
+          <div>
+            <h3>R11 — заявлено / требуется по расчёту</h3>
+            <div id="importDiff" class="import-diff"></div>
+          </div>
+          <label class="import-confirm"><input id="importConfirm" type="checkbox" /> Я проверил сопоставление колонок и подтверждаю отмеченные допущения. Результат остаётся не подписанным (рекомендательным).</label>
+          <div class="import-actions">
+            <button id="btnImportRemap" class="ghost">Пересчитать с этим сопоставлением</button>
+            <button id="btnImportCreate" class="primary" disabled>Создать проект</button>
+          </div>
+          <p id="importIdentity" class="disclaimer"></p>
         </section>
-      </aside>
-
-      <section class="col center">
-        <div class="summary" id="summary"></div>
-        <div class="tabs" id="tabs">
-          <button data-tab="tcc" class="active">Время-токовые хар-ки</button>
-          <button data-tab="sweep">Подбор сечения</button>
-          <button data-tab="vd">Профиль ΔU</button>
-          <button data-tab="derating">Поправочные коэффициенты</button>
-          <button data-tab="sld">Однолинейка</button>
-        </div>
-        <div class="artifact">
-          <div id="plot_tcc" class="plot tabpane"></div>
-          <div id="plot_sweep" class="plot tabpane" style="display:none"></div>
-          <div id="plot_vd" class="plot tabpane" style="display:none"></div>
-          <div id="plot_derating" class="plot tabpane" style="display:none"></div>
-          <div id="plot_sld" class="tabpane" style="display:none"></div>
-        </div>
-        <div class="prov" id="provenance"></div>
+        <div id="projectGrid" class="cards"></div>
       </section>
 
-      <aside class="col right">
-        <section class="panel copilot">
-          <div class="panel-h">Копилот</div>
-          <div id="chat" class="chat"></div>
+      <!-- ============ READ-ONLY SHARE ============ -->
+      <section id="screen-shared" class="screen" hidden>
+        <div class="shared-head">
+          <div>
+            <div class="badge review" title="READ-ONLY · UNSIGNED_ADVISORY">Только просмотр · не подписано</div>
+            <h2 id="sharedName">Загрузка share-ссылки…</h2>
+            <p id="sharedMeta" class="dim"></p>
+          </div>
+          <p class="shared-warning">Анонимная ссылка даёт чтение любому получателю. Изменение,
+            подпись и экспорт здесь отключены; инженерные значения заново рассчитаны сервером.</p>
+        </div>
+        <div class="sched-wrap">
+          <table class="schedule">
+            <thead><tr>
+              <th>Ref</th><th>Описание</th><th class="num">P,кВт</th><th class="no-caps num">cos φ</th><th>Фаза</th><th class="num">IB,A</th>
+              <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th class="num">L,м</th><th class="num">IZ,A</th><th class="num">ΔU%</th><th>Статус</th>
+            </tr></thead>
+            <tbody id="sharedScheduleBody"></tbody>
+          </table>
+        </div>
+        <div class="totals" id="sharedTotals"></div>
+        <section class="panel sld-panel">
+          <div class="panel-h">Однолинейная схема · свежий серверный отчёт</div>
+          <div id="sharedSld" class="sld-preview"></div>
+        </section>
+        <div class="disclaimer" id="sharedIdentity"></div>
+      </section>
+
+      <!-- ============ PROJECT / BOARD ============ -->
+      <section id="screen-project" class="screen" hidden>
+        <div class="board-head">
+          <div class="board-id">
+            <input id="b_name" class="board-name" />
+            <div class="board-sub">
+              <input id="b_ref" placeholder="DB-1" title="Обозначение щита" />
+              <input id="b_location" placeholder="расположение" title="Расположение" />
+              <span class="supply" id="b_supply"></span>
+              <select id="b_pack" title="Норм-пакет"></select>
+              <span class="badge small" id="b_packStatus"></span>
+            </div>
+          </div>
+          <div class="board-actions">
+            <span id="boardRollup" class="badge">—</span>
+            <button id="btnNormcheck" class="primary" title="Детерминированная проверка R01–R10"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>Нормоконтроль</button>
+            <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>Пакет документов</button>
+            <button id="btnShare" class="ghost"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Share-ссылка</button>
+            <div class="menu-wrap">
+              <button id="btnMore" class="ghost" type="button" aria-haspopup="true" aria-expanded="false" title="Ещё действия">Ещё <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+              <div id="boardMoreMenu" class="dropdown-menu" hidden>
+                <button id="btnPrint" class="ghost" title="Печатная страница / PDF"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
+                <button id="btnReport" class="ghost">Отчёт по щиту</button>
+                <button id="btnExportProj" class="ghost">Сохранить файл проекта</button>
+                <button id="btnBackDash" class="ghost">← К проектам</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sched-wrap">
+          <table class="schedule">
+            <thead><tr>
+              <th>Ref</th><th>Описание</th><th class="num">P,кВт</th><th class="no-caps num">cos φ</th><th>Фаза</th><th class="num">IB,A</th>
+              <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th class="num">L,м</th><th class="num">IZ,A</th><th class="num">ΔU%</th><th>Статус</th><th></th>
+            </tr></thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+        </div>
+
+        <div class="quickadd">
+          <button id="btnAddCircuit" class="primary">+ Добавить цепь</button>
+          <input id="nlQuick" placeholder="или опиши цепь словами: «розетки кухни 3.6 кВт, 230 В, PVC медь метод C, 18 м, автомат C, КЗ 6 кА»" />
+          <button id="btnNlAdd" class="ghost">Разобрать и добавить</button>
+        </div>
+
+        <div class="totals" id="boardTotals"></div>
+
+        <section class="panel board-copilot" id="boardCopilot">
+          <div class="panel-h">
+            Копилот щита · только предложения
+            <span class="badge review" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
+          </div>
+          <div id="boardCopilotMessages" class="chat board-chat">
+            <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
+          </div>
           <div class="chatbar">
-            <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами — разберу, посчитаю, проверю ревьюером"></textarea>
-            <button id="chatSend" class="primary" title="Отправить (⌘/Ctrl+Enter)" aria-label="Отправить">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-4 16-4.5-6L4 12Z"/><path d="m11.5 14 4.5-6"/></svg>
-            </button>
+            <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер 5 кВт на L2 и покажи, что изменится"></textarea>
+            <button id="boardCopilotSend" class="primary">Отправить</button>
           </div>
-          <div class="row btns">
-            <button id="btnExplain" class="ghost">Объяснить</button>
-            <button id="btnReview" class="ghost">Ревьюер</button>
+          <div id="boardProposal" class="proposal" hidden>
+            <div id="boardProposalDiff"></div>
+            <p id="boardProposalIdentity" class="disclaimer"></p>
+            <div class="row btns">
+              <button id="boardProposalApply" class="primary">Применить</button>
+              <button id="boardProposalReject" class="ghost">Отклонить</button>
+            </div>
           </div>
+          <button id="boardProposalUndo" class="ghost" hidden>Отменить последнее применение копилота</button>
         </section>
-        <section class="panel">
-          <div class="panel-h">Обоснование расчёта · по пунктам норм</div>
-          <div id="trace" class="trace"></div>
+
+        <section class="panel norm-panel">
+          <div class="panel-h">
+            Нормоконтроль
+            <span id="normSummary" class="norm-summary dim">не запускался</span>
+          </div>
+          <div id="normFindings" class="norm-findings">
+            <span class="dim">Нажми «Нормоконтроль»: правила пересчитают проект на сервере и не используют сохранённые клиентские результаты.</span>
+          </div>
+          <div id="normIdentity" class="norm-identity"></div>
         </section>
-      </aside>
-    </div>
-  </section>
-</main>
+
+        <section class="panel sld-panel">
+          <div class="panel-h">Однолинейная схема
+            <button id="btnSldRefresh" class="ghost" style="margin-left:auto">Обновить предпросмотр</button>
+          </div>
+          <div id="sldPreview" class="sld-preview"><span class="dim">Нажми «Обновить предпросмотр» или добавь цепь.</span></div>
+        </section>
+
+        <div class="disclaimer" id="projDisclaimer"></div>
+      </section>
+
+      <!-- ============ NORM LIBRARY (docs/20 §10) ============ -->
+      <section id="screen-norms" class="screen" hidden>
+        <div class="dash-head">
+          <h2>Нормы</h2>
+          <div class="dash-actions">
+            <input id="normSearchInput" placeholder="поиск по тексту норм…" />
+            <label class="ghost checkbox"><input id="normInclRepealed" type="checkbox" /> показывать утратившие силу</label>
+          </div>
+        </div>
+        <p class="dim">Официальные тексты с adilet.zan.kz. Числа для расчёта берутся только из датапаков — тексты здесь для чтения человеком.</p>
+        <div class="nlib-layout">
+          <aside class="nlib-side">
+            <h3>Документы</h3>
+            <div id="normDocList" class="nlib-doc-list"></div>
+          </aside>
+          <div id="normToc" class="nlib-toc" hidden></div>
+          <div class="nlib-main">
+            <div id="normResults" class="nlib-results" hidden></div>
+            <div id="normReader" class="nlib-reader" hidden></div>
+            <div id="normEmpty" class="empty">Выберите документ слева или найдите пункт поиском.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PRINT ============ -->
+      <section id="screen-print" class="screen" hidden>
+        <div id="printRoot" class="print-root"></div>
+      </section>
+
+      <!-- ============ CIRCUIT EDITOR ============ -->
+      <section id="screen-editor" class="screen" hidden>
+        <div class="editor-bar">
+          <button id="btnBackPanel" class="ghost">← К щиту</button>
+          <div class="ed-nav"><button id="btnPrev" class="mini">‹ пред</button><span id="edRef"></span><button id="btnNext" class="mini">след ›</button></div>
+          <div class="ed-right">
+            <span id="edSignoff" class="badge small" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
+            <button id="btnSign" class="ghost">Подписать цепь</button>
+            <button id="btnSaveCircuit" class="primary">Сохранить в щит</button>
+          </div>
+        </div>
+
+        <div class="grid">
+          <aside class="col left">
+            <section class="panel">
+              <div class="panel-h">Параметры цепи</div>
+              <div class="form">
+                <fieldset class="fgroup">
+                  <legend>Нагрузка</legend>
+                  <div class="row">
+                    <label>Ref <input id="f_ref" placeholder="L1" /></label>
+                    <label>Название <input id="f_desc" value="Цепь" /></label>
+                  </div>
+                  <div class="row">
+                    <label>Ввод <select id="f_srcType"><option value="power">Мощность, Вт</option><option value="current">Ток, А</option></select></label>
+                    <label id="wrap_power">P, Вт <input id="f_power" type="number" value="3680" /></label>
+                    <label id="wrap_current" style="display:none">I, А <input id="f_current" type="number" value="20" /></label>
+                  </div>
+                  <div class="row">
+                    <label>U, В <input id="f_voltage" type="number" value="230" /></label>
+                    <label>Фаз <select id="f_phases"><option selected>1</option><option>3</option></select></label>
+                    <label>cosφ <input id="f_pf" type="number" step="0.01" value="0.95" /></label>
+                  </div>
+                  <div class="row">
+                    <label>Назначение <select id="f_purpose"><option value="lighting">освещение</option><option value="power">силовая</option><option value="socket" selected>розетки</option><option value="motor">двигатель</option><option value="general">прочее</option></select></label>
+                    <label>Фаза щита <select id="f_phase"><option>L1</option><option>L2</option><option>L3</option><option value="L1L2L3">3ф</option></select></label>
+                  </div>
+                </fieldset>
+                <fieldset class="fgroup">
+                  <legend>Кабель и прокладка</legend>
+                  <div class="row">
+                    <label>Метод <select id="f_method"><option selected>C</option><option>B1</option><option>A1</option><option>A2</option><option>B2</option><option>D</option><option>E</option><option>F</option><option>G</option></select></label>
+                    <label>Жила <select id="f_material"><option selected>Cu</option><option>Al</option></select></label>
+                    <label>Изоляция <select id="f_insulation"><option selected>PVC</option><option>XLPE</option></select></label>
+                  </div>
+                  <div class="row">
+                    <label>t окр., °C <input id="f_ambient" type="number" value="30" /></label>
+                    <label>Групп. <input id="f_grouping" type="number" value="1" /></label>
+                    <label>Длина, м <input id="f_length" type="number" value="18" /></label>
+                  </div>
+                  <div class="row">
+                    <label>Предел ΔU,% <input id="f_vdlimit" type="number" step="0.1" placeholder="авто" /></label>
+                  </div>
+                </fieldset>
+                <fieldset class="fgroup">
+                  <legend>Защита</legend>
+                  <div class="row">
+                    <label>Аппарат <select id="f_device"><option value="MCB" selected>Автомат (MCB)</option><option value="MCCB">Автомат в литом корпусе (MCCB)</option><option value="gG_fuse">Предохранитель gG</option></select></label>
+                    <label id="wrap_curve">Характеристика <select id="f_curve"><option>B</option><option selected>C</option><option>D</option></select></label>
+                  </div>
+                  <div class="row">
+                    <label>УЗО <select id="f_rcd"><option value="">нет</option><option>RCBO</option><option>RCD</option></select></label>
+                    <label>IΔn, мА <input id="f_rcd_ma" type="number" value="30" /></label>
+                  </div>
+                </fieldset>
+                <fieldset class="fgroup">
+                  <legend>Короткое замыкание</legend>
+                  <div class="row">
+                    <label>I КЗ, А <input id="f_iscc" type="number" value="3000" /></label>
+                    <label title="время отключения аппарата для проверки КЗ (мгновенная зона ≈0.01 с; не путать с 0.4 с ADS)">t КЗ, с <input id="f_tdisc" type="number" step="0.01" value="0.01" /></label>
+                  </div>
+                </fieldset>
+                <div class="row btns"><button id="recalc" class="ghost">Пересчитать</button></div>
+              </div>
+            </section>
+          </aside>
+
+          <section class="col center">
+            <div class="summary" id="summary"></div>
+            <div class="tabs" id="tabs">
+              <button data-tab="tcc" class="active">Время-токовые хар-ки</button>
+              <button data-tab="sweep">Подбор сечения</button>
+              <button data-tab="vd">Профиль ΔU</button>
+              <button data-tab="derating">Поправочные коэффициенты</button>
+              <button data-tab="sld">Однолинейка</button>
+            </div>
+            <div class="artifact">
+              <div id="plot_tcc" class="plot tabpane"></div>
+              <div id="plot_sweep" class="plot tabpane" style="display:none"></div>
+              <div id="plot_vd" class="plot tabpane" style="display:none"></div>
+              <div id="plot_derating" class="plot tabpane" style="display:none"></div>
+              <div id="plot_sld" class="tabpane" style="display:none"></div>
+            </div>
+            <div class="prov" id="provenance"></div>
+          </section>
+
+          <aside class="col right">
+            <section class="panel copilot">
+              <div class="panel-h">Копилот</div>
+              <div id="chat" class="chat"></div>
+              <div class="chatbar">
+                <textarea id="chatInput" rows="2" placeholder="Опиши цепь словами — разберу, посчитаю, проверю ревьюером"></textarea>
+                <button id="chatSend" class="primary" title="Отправить (⌘/Ctrl+Enter)" aria-label="Отправить">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-4 16-4.5-6L4 12Z"/><path d="m11.5 14 4.5-6"/></svg>
+                </button>
+              </div>
+              <div class="row btns">
+                <button id="btnExplain" class="ghost">Объяснить</button>
+                <button id="btnReview" class="ghost">Ревьюер</button>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-h">Обоснование расчёта · по пунктам норм</div>
+              <div id="trace" class="trace"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
 
 <!-- Reader side panel: opens on a citation click from the report / normcheck (docs/20 §10.3) -->
 <aside id="normPanel" class="nlib-panel" hidden>
