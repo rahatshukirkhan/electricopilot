@@ -17,6 +17,10 @@ const PACK_LABELS = { 'iec-stub': 'IEC 60364 (демо-данные)', 'pue-rk':
 const SEV_LABELS = { error: 'ошибка', warning: 'предупреждение', info: 'инфо' };            // normcheck severity
 const DIFF_LABELS = { match: 'совпадает', violation: 'нарушение', not_checked: 'не проверено' }; // import-diff status
 const SECTION_LABELS = { standard_ratings: 'номинальные ряды аппаратов', standard_sections: 'стандартные сечения', device_parameters: 'параметры аппаратов', overload_rule: 'правило перегрузки', ampacity: 'пропускная способность', ambient_correction: 'поправка на температуру', grouping_correction: 'поправка на группировку', adiabatic_k: 'коэффициент адиабаты k', resistivity: 'удельные сопротивления', reactance: 'реактансы', voltage_drop_limit: 'предел ΔU' };
+// Origin/data-status codes as they appear inline in server prose (provenance/disclaimer text) — not
+// the same dict as packStatusBadge's own `origin` translation (that one renders a standalone badge
+// and must not be touched here). PASS/FAIL stay untranslated — engineering notation, not prose.
+const ORIGIN_STATUS_LABELS = { illustrative: 'синтетические (демо)', public_standard: 'публичный стандарт', licensed: 'лицензионные', NEEDS_REVIEW: 'требует проверки', VERIFIED: 'проверено' };
 const stLabel = (s) => ST_LABELS[s] ?? (s ?? '');            // unknown code shown as-is
 const govLabel = (g) => GOV_LABELS[g] ?? (g ?? '');           // unknown code shown as-is
 const packLabel = (p) => PACK_LABELS[p] ?? (p ?? '');
@@ -25,9 +29,10 @@ const diffLabel = (s) => DIFF_LABELS[s] ?? (s ?? '');
 // Schedule/SLD device strings arrive from the engine (e.g. "MCB 16A C", "gG_fuse 20A"): MCB/MCCB is
 // engineering notation and stays; only the snake_case gG_fuse token is humanized (docs/17 §4).
 const deviceText = (s) => String(s ?? '').replace(/gG_fuse/g, 'Предохранитель gG');
-// Provenance/disclaimer strings are server-generated Russian prose that lists untrusted sections by
-// their snake_case code — translate just those codes for display (server text is not otherwise rewritten).
-const humanizeSections = (t) => String(t ?? '').replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance)\b/g, (m) => SECTION_LABELS[m] || m);
+// Provenance/disclaimer strings are server-generated Russian prose that lists untrusted sections and
+// origin/status codes by their raw code — translate just those tokens for display (server text is
+// not otherwise rewritten).
+const humanizeSections = (t) => String(t ?? '').replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance|illustrative|public_standard|licensed|NEEDS_REVIEW|VERIFIED)\b/g, (m) => SECTION_LABELS[m] || ORIGIN_STATUS_LABELS[m] || m);
 
 // ---------- storage ----------
 const K_WS = 'ec_v2_workspace', K_IDX = 'ec_v2_projects', KP = id => 'ec_v2_project_' + id;
@@ -198,7 +203,7 @@ function renderDashboard(filter) {
         <button data-open="${p.id}">Открыть</button>
         <button data-rename="${p.id}">Переименовать</button>
         <button data-dup="${p.id}">Дублировать</button>
-        <button data-export="${p.id}">Экспорт</button>
+        <button data-export="${p.id}" title="Сохранить файл проекта (.ecproj.json)">Файл проекта</button>
         <button data-del="${p.id}">Удалить</button>
       </div></div>`;
   }).join('');
@@ -446,7 +451,7 @@ function renderBoardProposal(proposal, baseVersion = null) {
           ${metricChange('In, A', before.protection_in_a, after.protection_in_a)} ·
           ${metricChange('IB, A', before.design_current_a, after.design_current_a)} ·
           ${metricChange('ΔU, %', before.voltage_drop_pct, after.voltage_drop_pct)} ·
-          <span><b>статус:</b> ${esc(before.status || '—')} → ${esc(after.status || '—')}</span>
+          <span><b>статус:</b> <span title="${esc(before.status || '')}">${esc(stLabel(before.status) || '—')}</span> → <span title="${esc(after.status || '')}">${esc(stLabel(after.status) || '—')}</span></span>
         </div></div></article>`;
   }).join('');
   const b0 = proposal.diff.board_before, b1 = proposal.diff.board_after;
@@ -469,7 +474,7 @@ async function sendBoardCopilot() {
     busy.remove();
     boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
     BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
-    if (!response.provenance_ok) boardCopilotMessage('bot', `Числа reply не прошли провенанс: ${response.unverified_numbers.join(', ')}. Proposal и расчёт не изменены.`);
+    if (!response.provenance_ok) boardCopilotMessage('bot', `Числа в ответе не прошли проверку провенанса: ${response.unverified_numbers.join(', ')}. Предложение и расчёт не изменены.`);
     if (response.error) boardCopilotMessage('bot', `Запрос не завершён: ${response.error}.`);
     renderBoardProposal(response.proposal, baseVersion);
   } catch (error) { busy.remove(); boardCopilotMessage('bot', 'Ошибка: ' + error.message); }
@@ -477,12 +482,12 @@ async function sendBoardCopilot() {
 function applyBoardProposal() {
   if (!BOARD_PROPOSAL || !PROJ) return;
   if (PROJ.updated_at !== BOARD_PROPOSAL_BASE) {
-    toast('Проект изменился после расчёта proposal. Запроси новый diff.'); return;
+    toast('Проект изменился после расчёта предложения — запроси новое предложение.'); return;
   }
   const ids = new Set(PROJ.circuits.map(item => item.id));
   for (const operation of BOARD_PROPOSAL.ops) {
-    if (operation.op === 'add' && ids.has(operation.circuit_id)) { toast('Proposal устарел: id цепи уже существует.'); return; }
-    if (operation.op !== 'add' && !ids.has(operation.circuit_id)) { toast('Proposal устарел: целевая цепь не найдена.'); return; }
+    if (operation.op === 'add' && ids.has(operation.circuit_id)) { toast('Предложение устарело: такая цепь уже есть в щите.'); return; }
+    if (operation.op !== 'add' && !ids.has(operation.circuit_id)) { toast('Предложение устарело: целевая цепь не найдена.'); return; }
     if (operation.op === 'add') ids.add(operation.circuit_id);
     if (operation.op === 'delete') ids.delete(operation.circuit_id);
   }
@@ -504,7 +509,7 @@ function applyBoardProposal() {
   PROJ.circuits.forEach((circuit, index) => { circuit.sort_index = index; });
   projSet(PROJ); renderBoardProposal(null); renderProject();
   $('boardProposalUndo').hidden = false;
-  toast('Proposal применён и отправлен на свежий серверный пересчёт.', 'Отменить', undoBoardProposal);
+  toast('Предложение применено; щит пересчитан сервером заново.', 'Отменить', undoBoardProposal);
 }
 function undoBoardProposal() {
   if (!COPILOT_UNDO) return;
@@ -514,7 +519,7 @@ function undoBoardProposal() {
 $('boardCopilotSend').addEventListener('click', sendBoardCopilot);
 $('boardCopilotInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBoardCopilot(); });
 $('boardProposalApply').addEventListener('click', applyBoardProposal);
-$('boardProposalReject').addEventListener('click', () => { renderBoardProposal(null); boardCopilotMessage('bot', 'Proposal отклонён; проект не изменён.'); });
+$('boardProposalReject').addEventListener('click', () => { renderBoardProposal(null); boardCopilotMessage('bot', 'Предложение отклонено; проект не изменён.'); });
 $('boardProposalUndo').addEventListener('click', undoBoardProposal);
 
 // ---------- deterministic normcheck (docs/14) ----------
@@ -567,7 +572,7 @@ function renderNormcheck(rep) {
     return `<article class="norm-card ${esc(f.severity)} ${unchecked ? 'not-checked' : ''}">
       <span class="norm-sev" title="${esc(unchecked ? 'not_checked' : f.severity)}">${esc(label)}</span>
       <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
-        <div class="norm-values">observed: ${esc(JSON.stringify(f.observed))}<br>required: ${esc(JSON.stringify(f.required))}</div>
+        <div class="norm-values">факт: ${esc(JSON.stringify(f.observed))}<br>требуется: ${esc(JSON.stringify(f.required))}</div>
         <div class="norm-cite">${esc(citeText(f.citation))}${citeOpenButton(f.citation)} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
       </div>${open}</article>`;
   }).join('') : '<span class="dim">Нарушений и непроверенных правил не найдено.</span>';
@@ -714,7 +719,7 @@ async function recompute() {
 function renderAll() {
   const r = VIZ.result; topBadge(r.overall_status);
   renderSummary(r); renderTCC(VIZ.tcc); renderSweep(VIZ.sweep); renderVD(VIZ.vd_profile); renderDerating(VIZ.derating); renderSLD(VIZ.sld); renderTrace(r);
-  const packNote = VIZ.data_provenance_note ? humanizeSections(VIZ.data_provenance_note) : `Норм-пакет «${packLabel(r.data_pack.name)}» (${r.data_pack.status}).`;
+  const packNote = VIZ.data_provenance_note ? humanizeSections(VIZ.data_provenance_note) : `Норм-пакет «${packLabel(r.data_pack.name)}» (${humanizeSections(r.data_pack.status)}).`;
   $('provenance').textContent = packNote + ' Не данные производителя оборудования.';
   relayoutActive();
 }
@@ -993,13 +998,22 @@ async function renderShared(token) {
 
 // ---------- boot ----------
 window.addEventListener('hashchange', route);
+// llm_admission is server-controlled ("local"/"disabled"); an older server may omit it entirely,
+// in which case behavior stays exactly as before (mode-only tags/greeting below).
+const llmAdmissionDisabled = () => HEALTH.mode !== 'fallback' && HEALTH.llm_admission === 'disabled';
 async function boot() {
   toggleSrc(); toggleCurve(); wsGet(); migrateLegacy();
-  try { HEALTH = await (await fetch(API + '/api/health')).json(); const el = $('modeTag'); el.textContent = HEALTH.mode === 'fallback' ? 'ИИ: резервный режим' : 'ИИ: активен'; el.title = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; } catch { const el = $('modeTag'); el.textContent = 'ИИ: недоступен'; el.title = 'offline'; }
+  try {
+    HEALTH = await (await fetch(API + '/api/health')).json();
+    const el = $('modeTag');
+    if (llmAdmissionDisabled()) { el.textContent = 'ИИ: отключён'; el.title = 'ИИ-помощник на этом стенде отключён владельцем (llm_admission: disabled)'; }
+    else { el.textContent = HEALTH.mode === 'fallback' ? 'ИИ: резервный режим' : 'ИИ: активен'; el.title = `${HEALTH.mode} · ${HEALTH.model_fast || ''}`; }
+  } catch { const el = $('modeTag'); el.textContent = 'ИИ: недоступен'; el.title = 'offline'; }
   try { PACKS = await (await fetch(API + '/api/packs')).json(); } catch { PACKS = []; }
   SYNC_AVAILABLE = HEALTH.project_store === 'neon';
   await syncFromServer();
   if (HEALTH.mode === 'fallback') addMsg('bot', 'Ключ Gemini на сервере не задан — копилот в режиме фолбэка (NL-разбор недоступен, объяснение — шаблон, ревьюер — детерминированный). Расчёт и графики работают полностью.');
+  else if (llmAdmissionDisabled()) addMsg('bot', 'ИИ-помощник на этом стенде отключён владельцем — расчёт, графики и нормоконтроль работают полностью.');
   else addMsg('bot', 'Опиши цепь словами или задай параметры — соберу расчёт с трассой до норм, интерактивные графики и проверку ревьюером.');
   route();
 }

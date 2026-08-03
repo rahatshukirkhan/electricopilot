@@ -78,6 +78,12 @@ button:has(.icon){display:inline-flex;align-items:center;justify-content:center;
 :where(input,select,textarea):hover{border-color:var(--line-2)}
 :where(input,select,textarea):focus-visible,:where(input,select,textarea):focus{outline:none;border-color:var(--acc);box-shadow:var(--ring)}
 :where(input,textarea)::placeholder{color:var(--faint)}
+/* checkbox/radio must not inherit width:100% from the rule above — it stretched the box away from its label */
+:where(input[type=checkbox],input[type=radio]){width:auto}
+label.checkbox{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+/* higher specificity than `.dash-actions input{width:190px}` (this checkbox lives inside .dash-actions
+   on the Норы screen) — the :where() default above is 0-specificity and loses to that rule */
+label.checkbox input[type=checkbox]{width:auto}
 select{appearance:none;-webkit-appearance:none;
   background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
   background-position:calc(100% - 15px) 52%, calc(100% - 10px) 52%;
@@ -237,6 +243,8 @@ table.schedule{width:100%;border-collapse:separate;border-spacing:0;font-size:13
 table.schedule th{text-align:left;padding:11px 12px;background:var(--panel2);color:var(--dim);
   font:600 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.06em;
   position:sticky;top:0;z-index:var(--z-sticky);border-bottom:1px solid var(--line-2);white-space:nowrap}
+/* text-transform:uppercase turns "cos φ" into "COSΦ" — this header keeps its own casing */
+table.schedule th.no-caps{text-transform:none}
 table.schedule td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
 table.schedule tbody tr{transition:background var(--dur)}
 table.schedule tbody tr:hover td{background:var(--panel2)}
@@ -244,7 +252,7 @@ table.schedule tbody tr:last-child td{border-bottom:none}
 table.schedule tbody tr{cursor:pointer}
 table.schedule .mono{font-family:var(--mono);font-weight:500}
 table.schedule tr.spare td{color:var(--faint);font-style:italic}
-.st-cell{font:600 12px var(--mono);display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;border:1px solid transparent}
+.st-cell{font:600 12px var(--mono);display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;border:1px solid transparent;white-space:nowrap}
 .st-cell::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .st-cell.PASS{color:var(--ok);background:var(--ok-soft);border-color:rgba(21,128,61,.3)}
 .st-cell.FAIL{color:var(--bad);background:var(--bad-soft);border-color:rgba(220,38,38,.3)}
@@ -312,7 +320,8 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 #screen-editor{padding:0}  /* editor-bar + .grid carry their own padding; avoids viewport overflow */
 .grid{display:grid;grid-template-columns:312px 1fr 352px;gap:14px;padding:14px 18px;height:calc(100vh - 52px - 30px - 56px)}
 .col{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;padding-right:2px}
-.center{overflow:hidden}
+/* was overflow:hidden — on short viewports it clipped .artifact instead of letting the column scroll */
+.center{overflow:auto}
 
 /* form ---------------------------------------------------------------- */
 .form{display:flex;flex-direction:column;gap:16px}
@@ -342,7 +351,7 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .tabs button:hover{color:var(--txt);background:var(--panel2)}
 .tabs button.active{color:var(--acc)}
 .tabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--acc);border-radius:2px 2px 0 0}
-.artifact{flex:1;background:var(--panel);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);padding:8px;min-height:0;box-shadow:var(--shadow)}
+.artifact{flex:1;background:var(--panel);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);padding:8px;min-height:340px;box-shadow:var(--shadow)}
 .plot{width:100%;height:100%}
 .artifact .tabpane{height:100%}
 .prov{font-size:11px;color:var(--warn);margin-top:9px;padding:8px 12px;background:var(--warn-soft);
@@ -399,6 +408,8 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
   border:1px solid var(--line-2);border-radius:var(--r-lg);padding:11px 16px;box-shadow:var(--shadow-lg);
   z-index:var(--z-toast);display:flex;gap:14px;align-items:center;font-size:13px;
   animation:toast-in .24s var(--ease)}
+/* [hidden] обязан побеждать: .toast{display:flex} перебивает атрибут — иначе пустая капсула висит всегда */
+.toast[hidden]{display:none}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 .toast button{background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);border:none;border-radius:var(--r-sm);padding:5px 12px;font-weight:600}
 
@@ -458,6 +469,9 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* ============ norm library (docs/20 §10) ============ */
 .nlib-topnav { margin-left: auto; }
 .nlib-layout { display: grid; grid-template-columns: 232px 268px minmax(0, 1fr); gap: 18px; align-items: start; }
+/* когда #normToc скрыт (поиск / пусто), .nlib-main без этого правила авто-занимает узкий трек 268px
+   вместо оставшихся 2/3 экрана — toc идёт прямо перед .nlib-main в разметке */
+.nlib-toc[hidden] + .nlib-main { grid-column: 2 / -1; }
 .nlib-side h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim, #667); }
 .nlib-doc-list { display: flex; flex-direction: column; gap: 6px; }
 .nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid #dde3ec; border-radius: 8px; background: #fff; cursor: pointer; }
@@ -535,4 +549,7 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 @media (max-width: 1200px) { .nlib-anchor-link { position: static; opacity: .55; width: auto;
   display: block; text-align: left; margin-bottom: 2px; } }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; }
-  .nlib-outline, .nlib-reader { max-height: none; } }
+  .nlib-outline, .nlib-reader { max-height: none; }
+  /* single-column stack below 900px: the wide-track override would otherwise resolve to an
+     implicit column 2 and put .nlib-side next to .nlib-main instead of stacking them */
+  .nlib-toc[hidden] + .nlib-main { grid-column: auto; } }
