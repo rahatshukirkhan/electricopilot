@@ -209,6 +209,8 @@ def test_local_fallback_keeps_fresh_report_and_explains_unavailable_share(
     expect(page.locator("#sldPreview svg")).to_have_count(1)
     page.get_by_role("button", name="Нормоконтроль").click()
     expect(page.locator("#normFindings")).not_to_contain_text("не запускался")
+    # design B (proto-b): Share-ссылка moved into the "Ещё" dropdown alongside Печать/Отчёт/Файл проекта
+    page.get_by_role("button", name="Ещё").click()
     page.get_by_role("button", name="Share-ссылка").click()
     expect(page.locator("#toast")).to_contain_text("требует DATABASE_URL")
     assert page.evaluate(
@@ -263,6 +265,8 @@ def test_memory_store_sync_conflict_and_read_only_share(
 
         captured_link: list[str] = []
         page_a.on("dialog", lambda dialog: (captured_link.append(dialog.default_value), dialog.accept()))
+        # design B (proto-b): Share-ссылка moved into the "Ещё" dropdown alongside Печать/Отчёт/Файл проекта
+        page_a.get_by_role("button", name="Ещё").click()
         page_a.get_by_role("button", name="Share-ссылка").click()
         expect(page_a.locator("#toast")).to_contain_text("Share-ссылка")
         if captured_link:
