@@ -101,6 +101,20 @@ def test_sld_svg_has_key_content():
         assert token in svg, token
 
 
+def test_sld_footer_glosses_raw_provenance_codes_in_russian():
+    """design-v2-spec §3 'заодно': the diagram caption reads in Russian, not raw enum codes —
+    but the raw code stays put right next to its gloss, since tests/test_export.py's
+    cross-surface consistency check (below) greps for the literal code on every document
+    surface."""
+    board = _board()
+    report = build_project_report(board)
+    assert "illustrative" in report["data_identity"]  # precondition: iec-stub is illustrative
+    assert "NEEDS_REVIEW" in report["data_identity"]
+    svg = sld_sheets_svg(board, report)[0]
+    assert "illustrative — синтетические (демо)" in svg
+    assert "NEEDS_REVIEW — требует проверки" in svg
+
+
 def test_sld_splits_into_sheets_over_16():
     circuits = [_circuit(f"c{i}", f"C{i}", f"Цепь {i}", 2000) for i in range(17)]
     board = {**_board(0), "circuits": circuits}
