@@ -133,6 +133,30 @@ function toast(msg, actionLabel, action) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
 }
 
+// ---------- dropdown menus ("Ещё" in the board header, «⋯» kebab on dashboard cards) ----------
+// Generic — any `.dropdown` with a `[data-menu-trigger]` button and a `.dropdown-menu` inside it.
+function closeAllMenus() {
+  document.querySelectorAll('.dropdown.open').forEach(d => {
+    d.classList.remove('open');
+    const t = d.querySelector('[data-menu-trigger]'); if (t) t.setAttribute('aria-expanded', 'false');
+  });
+}
+function toggleMenu(dropdownEl) {
+  const willOpen = !dropdownEl.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) {
+    dropdownEl.classList.add('open');
+    const t = dropdownEl.querySelector('[data-menu-trigger]'); if (t) t.setAttribute('aria-expanded', 'true');
+  }
+}
+document.addEventListener('click', e => {
+  const trigger = e.target.closest('[data-menu-trigger]');
+  if (trigger) { e.stopPropagation(); toggleMenu(trigger.closest('.dropdown')); return; }
+  if (e.target.closest('.dropdown-menu button')) { closeAllMenus(); return; } // one-shot action — close after acting
+  if (!e.target.closest('.dropdown')) closeAllMenus();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllMenus(); });
+
 // ---------- router ----------
 function go(hash) { location.hash = hash; }
 function route() {
@@ -196,16 +220,18 @@ function renderDashboard(filter) {
     const r = p.rollup?.counts || { PASS: 0, FAIL: 0, NEEDS_REVIEW: 0 };
     const chip = (n, cls, lab, code) => `<span class="chip ${n ? cls : 'n'}"${code ? ` title="${esc(code)}"` : ''}>${n} ${esc(lab)}</span>`;
     return `<div class="card" data-open="${p.id}">
+      <div class="card-menu dropdown">
+        <button class="kebab" data-menu-trigger aria-haspopup="true" aria-expanded="false" aria-label="Действия со щитом «${esc(p.name)}»" title="Действия">⋯</button>
+        <div class="dropdown-menu" role="menu">
+          <button data-rename="${p.id}">Переименовать</button>
+          <button data-dup="${p.id}">Дублировать</button>
+          <button data-export="${p.id}" title="Сохранить файл проекта (.ecproj.json)">Файл проекта</button>
+          <button data-del="${p.id}">Удалить</button>
+        </div>
+      </div>
       <h3>${esc(p.name)} <span class="cref">${esc(p.board_ref || '')}</span></h3>
       <div class="chips">${chip(p.count || 0, 'n', 'цепей')}${chip(r.PASS, 'pass', 'соответствуют', 'PASS')}${chip(r.NEEDS_REVIEW, 'review', 'требует проверки', 'NEEDS_REVIEW')}${chip(r.FAIL, 'fail', 'не проходят', 'FAIL')}</div>
-      <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div>
-      <div class="cact">
-        <button data-open="${p.id}">Открыть</button>
-        <button data-rename="${p.id}">Переименовать</button>
-        <button data-dup="${p.id}">Дублировать</button>
-        <button data-export="${p.id}" title="Сохранить файл проекта (.ecproj.json)">Файл проекта</button>
-        <button data-del="${p.id}">Удалить</button>
-      </div></div>`;
+      <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div></div>`;
   }).join('');
 }
 function when(iso) { if (!iso) return '—'; const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return 'только что'; if (s < 3600) return Math.floor(s / 60) + ' мин назад'; if (s < 86400) return Math.floor(s / 3600) + ' ч назад'; return new Date(iso).toLocaleDateString('ru'); }
@@ -752,46 +778,46 @@ $('recalc').addEventListener('click', recompute);
 document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phases,#f_pf,#f_purpose,#f_method,#f_material,#f_insulation,#f_ambient,#f_grouping,#f_length,#f_device,#f_curve,#f_iscc,#f_tdisc,#f_vdlimit,#f_phase,#f_rcd,#f_rcd_ma').forEach(el => el.addEventListener('change', recompute));
 
 // ---------- charts (Plotly/SVG) ----------
-const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#42557A', size: 12, family: "'Fira Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
+const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#9AA3B5', size: 12, family: "'Inter', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0, font: { color: '#9AA3B5' } }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
   const deviceOff = t.device.available === false;
   const traces = [
-    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#DC2626', width: 2.5 } },
+    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#F85149', width: 2.5 } },
   ];
   if (!deviceOff) traces.push(
-    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#1E40AF', width: 1 }, showlegend: false },
-    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#1E40AF', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(30,64,175,.12)' },
+    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#4C8DFF', width: 1 }, showlegend: false },
+    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#4C8DFF', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(76,141,255,.16)' },
   );
   const shapes = [], anns = [];
-  vlines(shapes, t.markers.IB, '#5B6B8C', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#B45309', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#DC2626', 'dot', 'Iscc', anns);
-  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#5B6B8C', size: 12 } });
+  vlines(shapes, t.markers.IB, '#6B7385', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#D29922', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#F85149', 'dot', 'Iscc', anns);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#6B7385', size: 12 } });
   const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
-  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#DC2626' : '#42557A' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#DBEAFE' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#DBEAFE' }, shapes, annotations: anns }), CFG);
+  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#F85149' : '#9AA3B5' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: 'rgba(255,255,255,.08)' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: 'rgba(255,255,255,.08)' }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
-  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#1E40AF' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#4E9B6E' : '#C9D6EA'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B45309', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#4C8DFF' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#3FB950' : '#333A47'));
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: 'rgba(255,255,255,.08)' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#D29922', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#D29922', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
-  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#1E40AF', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#0F1B33', size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#DBEAFE' }, yaxis: { title: 'ΔU, %', gridcolor: '#DBEAFE' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#DC2626', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#DC2626', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#4C8DFF', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#E8EAF0', size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: 'rgba(255,255,255,.08)' }, yaxis: { title: 'ΔU, %', gridcolor: 'rgba(255,255,255,.08)' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#F85149', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#F85149', size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#15803D'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#4C8DFF', '#7AB0FF', '#3FB950'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: 'rgba(255,255,255,.08)' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#D29922', width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
-  if (!s) return; const col = { PASS: '#15803D', FAIL: '#DC2626', NEEDS_REVIEW: '#B45309' }[s.status] || '#5B6B8C';
+  if (!s) return; const col = { PASS: '#3FB950', FAIL: '#F85149', NEEDS_REVIEW: '#D29922' }[s.status] || '#6B7385';
   const bw = 150, gap = 46, y = 70, h = 78; let x = 20, svg = `<svg viewBox="0 0 ${20 + (bw + gap) * 4} 200" class="sld" style="max-width:100%">`;
   s.nodes.forEach((n, idx) => {
-    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#1E40AF" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : '#BFD3F2'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#42557A" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
+    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#4C8DFF" stroke-width="2"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#191D26" stroke="${idx === s.nodes.length - 1 ? col : 'rgba(255,255,255,.18)'}" stroke-width="2"/>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#E8EAF0" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#9AA3B5" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
     x += bw + gap;
   });
   svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${esc(stLabel(s.status))} · определяет: ${esc(govLabel(s.governing))}</text></svg>`;

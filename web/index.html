@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="light" />
+<meta name="color-scheme" content="dark" />
 <title>ElectriCopilot Studio — воркбенч проектировщика электрики (IEC 60364)</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" />
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -117,11 +117,16 @@
         <span id="boardRollup" class="badge">—</span>
         <button id="btnNormcheck" class="primary" title="Детерминированная проверка R01–R10"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>Нормоконтроль</button>
         <button id="btnBundle" class="primary" title="Скачать пакет документов (SVG+DXF+XLSX+MD)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>Пакет документов</button>
-        <button id="btnPrint" class="ghost" title="Печатная страница / PDF"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
-        <button id="btnReport" class="ghost">Отчёт по щиту</button>
         <button id="btnShare" class="ghost"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Share-ссылка</button>
-        <button id="btnExportProj" class="ghost">Сохранить файл проекта</button>
-        <button id="btnBackDash" class="ghost">← К проектам</button>
+        <div class="dropdown">
+          <button id="btnMore" class="ghost" data-menu-trigger aria-haspopup="true" aria-expanded="false" title="Ещё действия">Ещё<svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="dropdown-menu" role="menu">
+            <button id="btnPrint" title="Печатная страница / PDF"><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
+            <button id="btnReport">Отчёт по щиту</button>
+            <button id="btnExportProj">Сохранить файл проекта</button>
+          </div>
+        </div>
+        <button id="btnBackDash" class="ghost" hidden>← К проектам</button>
       </div>
     </div>
 
