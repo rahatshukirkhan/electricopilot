@@ -395,6 +395,7 @@ async function renderProject() {
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
   $('projDisclaimer').textContent = 'Рекомендательный расчёт; требуется подпись инженера по каждой цепи и по щиту.';
   renderPackSelect();
+  renderBoardMetaLine();
   resetNormcheckPanel();
   const body = $('scheduleBody');
   if (!p.circuits.length) { body.innerHTML = `<tr><td colspan="14" class="empty" style="border:none">Пусто — добавь цепь или опиши словами ниже.</td></tr>`; $('boardTotals').innerHTML = ''; topBadge(''); $('boardRollup').textContent = '—'; $('boardRollup').className = 'badge'; return; }
@@ -421,6 +422,28 @@ function renderPackSelect() {
   packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur));
 }
 $('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
+// design-v2-spec §2.4: one quiet metadata line built from the same b_ref/b_location/b_pack fields that
+// live inside the popover — reads the live input values, not just PROJ, so it updates as you type.
+function renderBoardMetaLine() {
+  const p = PROJ;
+  const ref = $('b_ref').value.trim() || '—';
+  const location = $('b_location').value.trim() || '—';
+  const packName = $('b_pack').value || p.norm_pack || PACKS[0]?.name || '';
+  const parts = [ref, location, `${p.supply.voltage_v} В`, `${p.supply.phases}ф`, p.supply.earthing, `${p.supply.ways_total} мест`, packLabel(packName)];
+  $('boardMetaLine').textContent = parts.filter(Boolean).join(' · ');
+}
+function setBoardMetaOpen(open) {
+  $('boardMetaPopover').hidden = !open;
+  $('btnBoardMeta').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+$('btnBoardMeta').addEventListener('click', e => { e.stopPropagation(); setBoardMetaOpen($('boardMetaPopover').hidden); });
+$('btnBoardMetaClose').addEventListener('click', () => setBoardMetaOpen(false));
+document.addEventListener('click', e => {
+  if ($('boardMetaPopover').hidden) return;
+  if (e.target.closest('#boardMetaPopover') || e.target.closest('#btnBoardMeta')) return;
+  setBoardMetaOpen(false);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('boardMetaPopover').hidden) { setBoardMetaOpen(false); $('btnBoardMeta').focus(); } });
 function rowHTML(r, readOnly = false) {
   const sign = r.signoff === 'SIGNED' ? '<svg class="icon icon-sm" viewBox="0 0 24 24" aria-label="подписано" title="подписано"><path d="M20 6 9 17l-5-5"/></svg>' : '';
   return `<tr data-cid="${r.id}">
@@ -459,7 +482,7 @@ $('scheduleBody').addEventListener('click', e => {
 });
 // crumb text no longer echoes the board name (design-v2-spec §2.2: it's a static "← Щиты" on this screen)
 const saveBoardMeta = debounce(() => { PROJ.name = $('b_name').value; PROJ.board_ref = $('b_ref').value; PROJ.location = $('b_location').value; projSet(PROJ); }, 500);
-['b_name', 'b_ref', 'b_location'].forEach(id => $(id).addEventListener('input', () => { setSave('unsaved'); saveBoardMeta(); }));
+['b_name', 'b_ref', 'b_location'].forEach(id => $(id).addEventListener('input', () => { setSave('unsaved'); saveBoardMeta(); renderBoardMetaLine(); }));
 $('btnBackDash').addEventListener('click', () => go('/'));
 $('btnAddCircuit').addEventListener('click', () => { const c = newCircuit(); c.sort_index = PROJ.circuits.length; c.ref = 'C' + (PROJ.circuits.length + 1); PROJ.circuits.push(c); projSet(PROJ); go('/p/' + PROJ.id + '/c/' + c.id); });
 $('btnNlAdd').addEventListener('click', nlAddCircuit);
@@ -782,7 +805,9 @@ function renderAll() {
 }
 function renderSummary(r) {
   const c = r.selected_cable, p = r.selected_protection;
-  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${esc(deviceText(p.device_class))} ${fmt(p.In_a)} A`, p.device_class], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Определяет', esc(govLabel(c.governing_constraint)), c.governing_constraint]].map(([k, v, ttl]) => `<div class="kv"><span>${k}:</span> <b${ttl ? ` title="${esc(ttl)}"` : ''}>${v}</b></div>`).join('');
+  // design-v2-spec §2.6: a quiet key-value strip, with "Определяет:" (the governing constraint)
+  // called out — last entry carries the `strong` flag, rendered with the .kv-strong class.
+  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${esc(deviceText(p.device_class))} ${fmt(p.In_a)} A`, p.device_class], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Определяет', esc(govLabel(c.governing_constraint)), c.governing_constraint, true]].map(([k, v, ttl, strong]) => `<div class="kv${strong ? ' kv-strong' : ''}"><span>${k}:</span> <b${ttl ? ` title="${esc(ttl)}"` : ''}>${v}</b></div>`).join('');
 }
 $('btnSaveCircuit').addEventListener('click', () => {
   const c = curCircuit(); if (!c) return;
@@ -809,46 +834,49 @@ $('recalc').addEventListener('click', recompute);
 document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phases,#f_pf,#f_purpose,#f_method,#f_material,#f_insulation,#f_ambient,#f_grouping,#f_length,#f_device,#f_curve,#f_iscc,#f_tdisc,#f_vdlimit,#f_phase,#f_rcd,#f_rcd_ma').forEach(el => el.addEventListener('change', recompute));
 
 // ---------- charts (Plotly/SVG) ----------
-const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#4D5865', size: 12, family: "'IBM Plex Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
+// design-v2-spec §3: Plotly can't consume CSS custom properties directly, so these mirror the
+// :root tokens in styles.css by value — keep them in sync if the palette ever changes there.
+const T = { navy: '#24407A', navySoft: 'rgba(36,64,122,.12)', burgundy: '#7E2440', ink: '#1C2536', dim: '#5A6478', faint: '#8B93A5', ok: '#2E7D4F', okMuted: 'rgba(46,125,79,.55)', warn: '#A9701E', bad: '#C8321F', grid: '#ECE9E1', notPassing: '#D8D3C7' };
+const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: T.dim, size: 12, family: "'IBM Plex Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
   const deviceOff = t.device.available === false;
   const traces = [
-    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#DA1E28', width: 2.5 } },
+    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: T.bad, width: 2.5 } },
   ];
   if (!deviceOff) traces.push(
-    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#0F62FE', width: 1 }, showlegend: false },
-    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#0F62FE', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(15,98,254,.12)' },
+    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: T.navy, width: 1 }, showlegend: false },
+    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: T.navy, width: 1 }, fill: 'tonexty', fillcolor: T.navySoft },
   );
   const shapes = [], anns = [];
-  vlines(shapes, t.markers.IB, '#878F9C', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#B28600', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#DA1E28', 'dot', 'Iscc', anns);
-  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#878F9C', size: 12 } });
+  vlines(shapes, t.markers.IB, T.faint, 'dot', 'IB', anns); vlines(shapes, t.markers.In, T.warn, 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, T.bad, 'dot', 'Iscc', anns);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: T.faint, size: 12 } });
   const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
-  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#DA1E28' : '#4D5865' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#E4E9EF' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#E4E9EF' }, shapes, annotations: anns }), CFG);
+  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? T.bad : T.dim } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: T.grid }, yaxis: { type: 'log', title: 'Время, с', gridcolor: T.grid }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
-  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#0F62FE' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#24A148' : '#DDE2E8'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#E4E9EF' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B28600', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B28600', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? T.burgundy : (r.amp_ok && r.vd_ok && r.sc_ok ? T.okMuted : T.notPassing));
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: T.grid }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: T.warn, width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: T.warn, size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
-  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#0F62FE', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#121619', size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#E4E9EF' }, yaxis: { title: 'ΔU, %', gridcolor: '#E4E9EF' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#DA1E28', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#DA1E28', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: T.navy, width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: T.ink, size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: T.grid }, yaxis: { title: 'ΔU, %', gridcolor: T.grid }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: T.bad, width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: T.bad, size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#0F62FE', '#4589FF', '#24A148'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#E4E9EF' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B28600', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: [T.navy, '#4F6CA8', T.ok] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: T.grid }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: T.warn, width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
-  if (!s) return; const col = { PASS: '#24A148', FAIL: '#DA1E28', NEEDS_REVIEW: '#B28600' }[s.status] || '#878F9C';
+  if (!s) return; const col = { PASS: T.ok, FAIL: T.bad, NEEDS_REVIEW: T.warn }[s.status] || T.faint;
   const bw = 150, gap = 46, y = 70, h = 78; let x = 20, svg = `<svg viewBox="0 0 ${20 + (bw + gap) * 4} 200" class="sld" style="max-width:100%">`;
   s.nodes.forEach((n, idx) => {
-    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#121619" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : '#121619'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#121619" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#4D5865" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
+    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="${T.ink}" stroke-width="2"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : T.ink}" stroke-width="2"/>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="${T.ink}" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="${T.dim}" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
     x += bw + gap;
   });
   svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${esc(stLabel(s.status))} · определяет: ${esc(govLabel(s.governing))}</text></svg>`;
@@ -870,6 +898,15 @@ $('tabs').addEventListener('click', e => {
   const id = e.target.dataset.tab;
   document.querySelectorAll('.tabpane').forEach(p => p.style.display = 'none'); $('plot_' + id).style.display = 'block';
   if (['tcc', 'sweep', 'vd', 'derating'].includes(id)) Plotly.Plots.resize($('plot_' + id));
+});
+
+// design-v2-spec §2.6: right-column "Копилот"/"Обоснование расчёта" tabs — deliberately scoped to
+// #rtabs/.rpane (not the shared .tabs/.tabpane the block above uses), which is queried document-wide.
+$('rtabs').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#rtabs button').forEach(b => b.classList.remove('active')); e.target.classList.add('active');
+  const id = e.target.dataset.rtab;
+  $('paneCopilot').hidden = id !== 'copilot'; $('paneTrace').hidden = id !== 'trace';
 });
 
 // ---------- copilot (editor) ----------

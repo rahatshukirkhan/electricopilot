@@ -24,7 +24,9 @@ RCD_Y = 76.0
 ARROW_Y = 218.0          # long drop fills the A3 sheet and clears the rotated summary label
 MAX_PER_SHEET = 16
 
-STATUS_COLOR = {"PASS": "#1f9d55", "FAIL": "#e5484d", "NEEDS_REVIEW": "#e6ad3c"}
+# design-v2-spec §3: status colours as the ok/warn/bad tokens (styles.css :root); burgundy is
+# reserved for brand accents, not used for status here.
+STATUS_COLOR = {"PASS": "#2E7D4F", "FAIL": "#C8321F", "NEEDS_REVIEW": "#A9701E"}
 _STATUS_LABEL = {"PASS": "PASS", "FAIL": "FAIL", "NEEDS_REVIEW": "REVIEW"}
 
 
@@ -54,7 +56,7 @@ def _input_feed(project: dict[str, Any]) -> list[Any]:
 def _draw_circuit(d: Drawing, x: float, row: dict[str, Any]) -> None:
     spec = row.get("spec", {}) or {}
     status = row.get("status", "")
-    color = STATUS_COLOR.get(status, "#7c8aa5")
+    color = STATUS_COLOR.get(status, "#8B93A5")  # --faint fallback for an unknown/missing status
 
     d.add(Line(x, BUS_Y, x, ARROW_Y, layer="WIRES", color=color, width=0.4))
     # gG fuse gets the fuse symbol; MCB/MCCB the switch symbol
@@ -112,12 +114,12 @@ def build_sld(project: ProjectInput, report: dict[str, Any]) -> list[Drawing]:
 def _draw_footer(d: Drawing, report: dict[str, Any]) -> None:
     """Advisory disclaimer + data-pack provenance on every sheet (docs/13 §each doc carries it)."""
     d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 3.5,
-               str(report.get("disclaimer", "")), height=1.65, anchor="start", color="#8a5a00"))
+               str(report.get("disclaimer", "")), height=1.65, anchor="start", color="#A9701E"))  # --warn
     d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 1.0,
                str(report.get("signoff_notice", "UNSIGNED_ADVISORY")),
-               height=1.65, anchor="start", color="#8a5a00"))
+               height=1.65, anchor="start", color="#A9701E"))  # --warn
     d.add(Text(MARGIN + 190, SHEET_H - MARGIN - 1.0,
-               str(report.get("data_identity", "")), height=1.65, anchor="start", color="#556"))
+               str(report.get("data_identity", "")), height=1.65, anchor="start", color="#5A6478"))  # --dim
 
 
 def sld_sheets_svg(project: ProjectInput, report: dict[str, Any]) -> list[str]:

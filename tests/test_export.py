@@ -62,11 +62,11 @@ _SVG_SNAPSHOT = (
     'viewBox="0 0 100 50" fill="none">\n'
     '<rect x="0" y="0" width="100" height="50" fill="#ffffff"/>\n'
     '<line x1="0" y1="0" x2="10" y2="10" stroke="#1f9d55" stroke-width="0.25"/>\n'
-    '<rect x="5" y="5" width="20" height="10" stroke="#5b6b86" stroke-width="0.25" fill="none"/>\n'
-    '<circle cx="30" cy="20" r="3" stroke="#0b1220" stroke-width="0.25" fill="none"/>\n'
-    '<polygon points="0,0 5,0 2.5,5" stroke="#0b1220" stroke-width="0.25" fill="#0b1220"/>\n'
+    '<rect x="5" y="5" width="20" height="10" stroke="#24407A" stroke-width="0.25" fill="none"/>\n'
+    '<circle cx="30" cy="20" r="3" stroke="#24407A" stroke-width="0.25" fill="none"/>\n'
+    '<polygon points="0,0 5,0 2.5,5" stroke="#24407A" stroke-width="0.25" fill="#24407A"/>\n'
     '<text x="10" y="20" font-size="2.5" font-family="Helvetica, Arial, sans-serif" '
-    'fill="#0b1220" text-anchor="middle" transform="rotate(-90 10 20)">QF &lt;1&gt;</text>\n'
+    'fill="#1C2536" text-anchor="middle" transform="rotate(-90 10 20)">QF &lt;1&gt;</text>\n'
     '</svg>'
 )
 

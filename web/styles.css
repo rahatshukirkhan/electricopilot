@@ -34,8 +34,7 @@
   /* ---- v1 (proto-C) aliases — old names kept live, remapped onto the v2 palette ---- */
   --bg:var(--paper); --bg-2:#F1EFE9;
   --panel:var(--card); --panel2:var(--wash); --elev:#ECE7DC;
-  --txt:var(--ink);                          /* NOTE: client-side chart/SLD JS (app.js) still
-    hardcodes the old #121619 ink literal — §3 (chart repaint) reconciles it in a later phase. */
+  --txt:var(--ink);
   --acc:var(--navy); --acc-2:#4F6CA8; --acc-press:var(--navy-press); --acc-soft:var(--navy-soft); --acc-ink:#FFFFFF;
   --amber:var(--warn); --amber-soft:var(--warn-soft);
 
@@ -183,9 +182,9 @@ button.primary{background:var(--acc);color:var(--acc-ink);
   box-shadow:none;transition:background var(--dur) var(--ease),filter var(--dur)}
 button.primary:hover{background:var(--acc-press);border-color:var(--acc-press)}
 button.primary:active{filter:brightness(.95)}
-/* design-v2-spec §1/§4: burgundy is reserved for the ONE main CTA of a screen (here: dashboard's
-   "+ Новый щит") — every other .primary button stays navy/interactive. Add .cta to promote a button;
-   other screens' main CTAs (Нормоконтроль, Сохранить в щит…) get it in their own phases. */
+/* design-v2-spec §1/§4: burgundy is reserved for the ONE main CTA of a screen (dashboard's
+   "+ Новый щит", board's "Нормоконтроль", editor's "Сохранить в щит") — every other .primary
+   button stays navy/interactive. Add .cta to promote a button. */
 button.primary.cta{background:var(--burgundy);border-color:var(--burgundy)}
 button.primary.cta:hover{background:var(--burgundy-press);border-color:var(--burgundy-press)}
 button.ghost{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
@@ -304,15 +303,36 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 
 /* ===================== BOARD / SCHEDULE ===================== */
 .board-head{display:flex;gap:18px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
+/* anchors the meta popover (design-v2-spec §2.4) below the metadata line */
+.board-id{position:relative;flex:1;min-width:280px}
+.board-title-row{display:flex;align-items:center;gap:10px}
 /* design-v2-spec §1: board names are serif, like screen titles */
-.board-name{font:600 20px var(--serif);letter-spacing:-.01em;background:transparent;border:1px solid transparent;
-  border-radius:var(--r-sm);padding:3px 8px;margin-left:-8px;width:100%;transition:border-color var(--dur),background var(--dur)}
+.board-name{flex:1;min-width:0;font:600 20px var(--serif);letter-spacing:-.01em;background:transparent;border:1px solid transparent;
+  border-radius:var(--r-sm);padding:3px 8px;margin-left:-8px;transition:border-color var(--dur),background var(--dur)}
 .board-name:hover{border-color:var(--line);background:var(--panel2)}
 .board-name:focus{border-color:var(--acc);background:var(--panel2);box-shadow:var(--ring)}
-.board-sub{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-.board-sub input{width:150px;font:500 12.5px var(--mono)}
-.board-sub .supply{color:var(--dim);font:500 12px var(--mono);background:var(--panel2);padding:5px 10px;border-radius:20px;border:1px solid var(--line)}
-.board-sub select#b_pack{width:150px;font:500 12.5px var(--mono)}
+/* design-v2-spec §2.4: one quiet metadata line ("DB-1 · Эл.щитовая · 400 В · 3ф · TN-C-S · 12 мест ·
+   IEC 60364 (демо)"); click opens the popover below holding the actual b_ref/b_location/b_pack inputs. */
+.board-meta-line{display:inline-flex;align-items:center;gap:5px;margin-top:5px;margin-left:-7px;padding:3px 7px;
+  max-width:100%;overflow:hidden;background:transparent;border:1px solid transparent;border-radius:var(--r-sm);
+  font:500 12.5px var(--mono);color:var(--dim);transition:border-color var(--dur),background var(--dur),color var(--dur)}
+.board-meta-line:hover{border-color:var(--line);background:var(--panel2);color:var(--txt)}
+.board-meta-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-meta-line .icon{color:var(--faint);flex:none}
+.board-meta-popover{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-modal);
+  min-width:400px;max-width:min(540px,90vw);background:var(--panel);border:1px solid var(--line-2);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-lg);padding:13px 15px}
+/* [hidden] обязан побеждать: не задаём display в правиле выше, но фиксируем явно — та же категория
+   бага, что уже чинилась для .toast/#statusBadge/#btnBackDash в этом файле */
+.board-meta-popover[hidden]{display:none}
+.bmp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;
+  font:600 12.5px var(--sans);color:var(--dim)}
+.bmp-head button{padding:4px 10px}
+.bmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 12px}
+.bmp-field{display:flex;flex-direction:column;gap:4px;font:600 10px var(--sans);color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+.bmp-field input,.bmp-field select{font:500 12.5px var(--mono);text-transform:none;letter-spacing:0}
+.bmp-row{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.supply{color:var(--dim);font:500 12px var(--mono);background:var(--panel2);padding:5px 10px;border-radius:20px;border:1px solid var(--line)}
 .board-actions{margin-left:auto;display:flex;gap:9px;align-items:center;flex-shrink:0;flex-wrap:wrap}
 
 .shared-head{display:flex;justify-content:space-between;gap:22px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
@@ -322,7 +342,8 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 #screen-shared .schedule tbody tr{cursor:default}
 
 .sched-wrap{overflow:auto;max-height:58vh;border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);background:var(--panel)}
-table.schedule{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;min-width:1060px}
+/* design-v2-spec §1: table body 13.5px */
+table.schedule{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:1060px}
 table.schedule th{text-align:left;padding:10px 12px;background:var(--thead-bg);color:var(--dim);
   font:600 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.06em;
   position:sticky;top:0;z-index:var(--z-sticky);border-bottom:1px solid var(--line-2);white-space:nowrap}
@@ -354,7 +375,8 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:4px}
 .totbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--shadow)}
 .totbox h4{margin:0 0 8px;font:600 11px/1.3 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.07em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.totbox .big{font:600 24px/1.1 var(--mono);color:var(--txt);letter-spacing:-.01em}
+/* design-v2-spec §1: burgundy marks key figures in totals */
+.totbox .big{font:600 24px/1.1 var(--mono);color:var(--burgundy);letter-spacing:-.01em}
 .totbox .big+div{color:var(--dim);font-size:12px;margin-top:3px}
 .totbox .warn{color:var(--warn)}
 .phbar{display:flex;gap:8px;align-items:flex-end;height:56px;margin:14px 0 24px;padding-top:4px}
@@ -426,6 +448,10 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .summary .kv:last-child{border-right:none;padding-right:0;margin-right:0}
 .summary .kv span{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;white-space:nowrap}
 .summary .kv b{color:var(--txt);font:600 14.5px var(--mono);letter-spacing:-.01em;white-space:nowrap}
+/* design-v2-spec §2.6: "Определяет:" is the one governing-constraint value worth calling out
+   in an otherwise quiet key-value strip — burgundy, like other key figures (design-v2-spec §1). */
+.summary .kv.kv-strong span{color:var(--burgundy)}
+.summary .kv.kv-strong b{color:var(--burgundy)}
 
 /* tabs + artifact ----------------------------------------------------- */
 .tabs{display:flex;gap:3px;margin-top:2px;border-bottom:1px solid var(--line);padding:0 2px}
@@ -443,6 +469,17 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 
 /* copilot ------------------------------------------------------------- */
 .copilot{display:flex;flex-direction:column}
+/* design-v2-spec §2.6: "Копилот"/"Обоснование расчёта" tabs of one panel. Deliberately its own
+   selectors (not .tabs/.tabs button/.tabs button.active) — those are queried document-wide by the
+   center chart tabs' click handler (see app.js), so reusing the class would let a center-tab click
+   strip this panel's "active" underline. Visually mirrors .tabs, bled to the panel edges. */
+.rtabs{display:flex;gap:3px;margin:-13px -15px 12px;padding:0 13px;border-bottom:1px solid var(--line)}
+.rtabs button{background:transparent;color:var(--dim);border:none;border-radius:var(--r-sm) var(--r-sm) 0 0;
+  padding:9px 12px;font:500 13px var(--sans);position:relative;transition:color var(--dur),background var(--dur)}
+.rtabs button:hover{color:var(--txt);background:var(--panel2)}
+.rtabs button.active{color:var(--acc)}
+.rtabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--acc)}
+.rpane[hidden]{display:none}
 .chat{flex:1;overflow:auto;display:flex;flex-direction:column;gap:9px;max-height:240px;min-height:120px;padding:2px}
 .msg{padding:9px 12px;border-radius:var(--r);font-size:13px;line-height:1.5;max-width:92%;position:relative}
 .msg.user{align-self:flex-end;background:var(--acc);color:var(--acc-ink);font-weight:500}
@@ -566,80 +603,86 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* когда #normToc скрыт (поиск / пусто), .nlib-main без этого правила авто-занимает узкий трек 268px
    вместо оставшихся 2/3 экрана — toc идёт прямо перед .nlib-main в разметке */
 .nlib-toc[hidden] + .nlib-main { grid-column: 2 / -1; }
-.nlib-side h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim, #4D5865); font-weight: 600; }
+.nlib-side h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
 .nlib-doc-list { display: flex; flex-direction: column; gap: 6px; }
-.nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid var(--line, #dde2e8); border-radius: var(--r-sm, 3px); background: #fff; cursor: pointer; }
-.nlib-doc:hover { border-color: var(--line-2, #c6cdd6); }
-.nlib-doc.active { border-color: var(--acc, #0f62fe); box-shadow: inset 3px 0 0 var(--acc, #0f62fe); }
+.nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card); cursor: pointer; }
+.nlib-doc:hover { border-color: var(--line-2); }
+/* design-v2-spec §2.7: active document gets a burgundy stripe, like the sidebar's active nav item */
+.nlib-doc.active { border-color: var(--burgundy); box-shadow: inset 3px 0 0 var(--burgundy); }
 .nlib-doc .t { font-weight: 500; line-height: 1.3; }
-.nlib-doc .m { font-size: 12px; color: #667; margin-top: 4px; }
+.nlib-doc .m { font-size: 12px; color: var(--dim); margin-top: 4px; }
 .nlib-status { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid; }
-.nlib-status.in_force { color: #17663a; border-color: #a9d8bd; background: #eef8f2; }
-.nlib-status.repealed { color: #8a2020; border-color: #e2b1b1; background: #fdf0f0; }
-.nlib-status.unknown { color: #7a5a00; border-color: #e0cf9a; background: #fdf7e6; }
+/* design-v2-spec §2.7: "действует" is an ok-pilyulya, matching .badge.pass/.chip.pass elsewhere */
+.nlib-status.in_force { color: var(--ok); border-color: rgba(46,125,79,.4); background: var(--ok-soft); }
+.nlib-status.repealed { color: var(--bad); border-color: rgba(200,50,31,.4); background: var(--bad-soft); }
+.nlib-status.unknown { color: var(--warn); border-color: rgba(169,112,30,.4); background: var(--warn-soft); }
 /* §8.4: у отменённого документа сноска об утрате силы видна везде, где показан его текст */
-.nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #c05a5a; background: #fdf0f0; font-size: 13px; }
-.nlib-hit { border: 1px solid var(--line, #dde2e8); border-radius: var(--r-sm, 3px); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: #fff; }
-.nlib-hit:hover { border-color: var(--line-2, #c6cdd6); }
-.nlib-hit .crumb { font-size: 12px; color: #667; }
-.nlib-hit mark { background: #fff3b0; padding: 0 1px; }
+.nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); font-size: 13px; }
+.nlib-hit { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: var(--card); }
+.nlib-hit:hover { border-color: var(--line-2); }
+.nlib-hit .crumb { font-size: 12px; color: var(--dim); }
+/* highlighter tint tied to --warn (amber family) rather than a stray yellow literal */
+.nlib-hit mark { background: rgba(169,112,30,.22); padding: 0 1px; }
 .nlib-body p { margin: 0 0 10px; line-height: 1.55; }
 /* §10.4: секции с таблицами — моноширинно, горизонтальный скролл внутри блока */
 .nlib-body pre.nlib-table { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
-  background: var(--panel2, #eef1f4); border: 1px solid var(--line, #dde2e8); border-radius: var(--r-sm, 3px); padding: 10px;
+  background: var(--wash); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px;
   overflow-x: auto; white-space: pre; margin: 0 0 10px; }
 .nlib-nav { display: flex; gap: 8px; margin-top: 12px; }
 /* [hidden] обязан побеждать: display у класса иначе перекрывает атрибут (панель висела открытой) */
 .nlib-panel[hidden], .nlib-results[hidden], .nlib-toc[hidden], .nlib-reader[hidden] { display: none; }
+/* right-edge drawer: needs a shadow cast toward its left edge (away from the page), not the
+   generic downward --shadow-lg — otherwise it stops reading as a layer above the page content */
 .nlib-panel { position: fixed; top: 0; right: 0; width: min(520px, 92vw); height: 100vh;
-  background: #fff; border-left: 1px solid var(--line, #dde2e8); box-shadow: -8px 0 24px rgba(18,22,25,.14);
+  background: var(--card); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(28,37,54,.14);
   z-index: 60; display: flex; flex-direction: column; }
-.nlib-panel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line, #dde2e8); }
+.nlib-panel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .nlib-panel-title { font-weight: 500; flex: 1; font-size: 14px; }
-.nlib-panel-src { font-size: 12px; white-space: nowrap; color: var(--acc, #0f62fe); }
+.nlib-panel-src { font-size: 12px; white-space: nowrap; color: var(--navy); }
 .nlib-panel-body { padding: 14px; overflow-y: auto; flex: 1; }
-.nlib-cite-open { font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid #b9cbe2;
-  border-radius: var(--r-sm, 3px); background: var(--acc-soft, #f2f7fd); color: #0043ce; cursor: pointer; }
-.nlib-cite-open:hover { border-color: var(--acc, #0f62fe); }
+.nlib-cite-open { font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid rgba(36,64,122,.3);
+  border-radius: var(--r-sm); background: var(--navy-soft); color: var(--navy); cursor: pointer; }
+.nlib-cite-open:hover { border-color: var(--navy); }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; } }
 
 /* --- читалка: сплошной текст, как в первоисточнике --- */
-.nlib-doc-head { padding-bottom: 10px; border-bottom: 1px solid var(--line, #dde2e8); margin-bottom: 10px; }
+.nlib-doc-head { padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 .nlib-doc-head h3 { margin: 0 0 6px; font-size: 15px; line-height: 1.35; }
-.nlib-doc-meta { font-size: 12px; color: #667; }
+.nlib-doc-meta { font-size: 12px; color: var(--dim); }
 /* Блочный поток, а не flex-колонка: во flex с ограниченной высотой 349 пунктов оглавления
    сжимались до 10 px каждый и превращались в нечитаемую кашу. */
 .nlib-outline { max-height: calc(100vh - 220px); overflow-y: auto; display: block; }
-.nlib-outline-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--r-sm, 3px);
-  padding: 5px 8px; font-size: 12.5px; line-height: 1.35; color: #2c3a4d; cursor: pointer;
+.nlib-outline-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--r-sm);
+  padding: 5px 8px; font-size: 12.5px; line-height: 1.35; color: var(--ink); cursor: pointer;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nlib-outline-item:hover { background: var(--panel2, #eef1f4); color: #0043ce; }
+.nlib-outline-item:hover { background: var(--wash); color: var(--navy); }
 .nlib-outline-item.d0 { font-weight: 600; margin-top: 8px; }
 .nlib-outline-item.d1 { padding-left: 14px; }
-.nlib-outline-item.d2 { padding-left: 26px; color: #5b6b80; font-size: 12px; }
+.nlib-outline-item.d2 { padding-left: 26px; color: var(--dim); font-size: 12px; }
 /* Колонка чтения: ограниченная мера строки — длинные нормы читают глазами, а не сканируют. */
 .nlib-reader { max-height: calc(100vh - 172px); overflow-y: auto; padding-right: 6px; }
-.nlib-text { max-width: 68ch; font-size: 15px; line-height: 1.62; color: #1c2533; }
+.nlib-text { max-width: 68ch; font-size: 15px; line-height: 1.62; color: var(--ink); }
 .nlib-text h2.nlib-h { font-size: 18px; margin: 26px 0 10px; padding-bottom: 6px;
-  border-bottom: 1px solid var(--line, #dde2e8); }
-.nlib-text h3.nlib-h { font-size: 16px; margin: 22px 0 8px; color: #0043ce; }
-.nlib-text h4.nlib-h { font-size: 14px; margin: 16px 0 6px; color: #46586f; }
+  border-bottom: 1px solid var(--line); }
+.nlib-text h3.nlib-h { font-size: 16px; margin: 22px 0 8px; color: var(--navy); }
+.nlib-text h4.nlib-h { font-size: 14px; margin: 16px 0 6px; color: var(--dim); }
 .nlib-clause { position: relative; margin: 0 0 12px; }
 .nlib-clause p { margin: 0 0 8px; }
 /* Якорь — адрес пункта, а не часть нормы: мелко, на поле, проявляется при наведении. */
 .nlib-anchor-link { position: absolute; left: -64px; top: 3px; width: 56px; text-align: right;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: #b3bdcc;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: var(--faint);
   text-decoration: none; opacity: 0; transition: opacity .12s; }
 .nlib-clause:hover .nlib-anchor-link { opacity: 1; }
-.nlib-anchor-link:hover { color: var(--acc, #0f62fe); }
-/* Подсветка места перехода гаснет сама: она показывает «ты здесь», а не выделяет текст. */
-.nlib-focus { border-radius: var(--r-sm, 3px); animation: nlib-fade 2.8s ease-out forwards; }
+.nlib-anchor-link:hover { color: var(--navy); }
+/* Подсветка места перехода гаснет сама: она показывает «ты здесь», а не выделяет текст.
+   Tied to --warn (amber family), like .nlib-hit mark, instead of a stray yellow literal. */
+.nlib-focus { border-radius: var(--r-sm); animation: nlib-fade 2.8s ease-out forwards; }
 @keyframes nlib-fade {
-  0%, 45% { background: #fff3c4; box-shadow: 0 0 0 6px #fff3c4; }
+  0%, 45% { background: rgba(169,112,30,.24); box-shadow: 0 0 0 6px rgba(169,112,30,.24); }
   100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
 }
 .nlib-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line, #dde2e8); font-size: 12px; }
+  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
 @media (max-width: 1200px) { .nlib-anchor-link { position: static; opacity: .55; width: auto;
   display: block; text-align: left; margin-bottom: 2px; } }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; }

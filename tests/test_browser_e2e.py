@@ -211,6 +211,8 @@ def test_local_fallback_keeps_fresh_report_and_explains_unavailable_share(
     expect(page.locator("#sldPreview svg")).to_have_count(1)
     page.get_by_role("button", name="Нормоконтроль").click()
     expect(page.locator("#normFindings")).not_to_contain_text("не запускался")
+    # design-v2-spec §2.4: Share-ссылка moved into the board's "Ещё" dropdown (was its own header button)
+    page.get_by_role("button", name="Ещё", exact=True).click()
     page.get_by_role("button", name="Share-ссылка").click()
     expect(page.locator("#toast")).to_contain_text("требует DATABASE_URL")
     assert page.evaluate(
@@ -259,12 +261,16 @@ def test_memory_store_sync_conflict_and_read_only_share(
             page_b.reload()
         assert future_put.value.ok
 
+        # design-v2-spec §2.4: b_ref/b_location/b_pack sit behind the "Параметры щита" popover now
+        page_a.get_by_role("button", name="Параметры щита").click()
         with page_a.expect_response(lambda response: response.status == 409 and "/api/projects/" in response.url):
             page_a.locator("#b_location").fill("Конфликт E2E")
         expect(page_a.locator("#toast")).to_contain_text("обновлён с другого устройства")
 
         captured_link: list[str] = []
         page_a.on("dialog", lambda dialog: (captured_link.append(dialog.default_value), dialog.accept()))
+        # design-v2-spec §2.4: Share-ссылка moved into the board's "Ещё" dropdown
+        page_a.get_by_role("button", name="Ещё", exact=True).click()
         page_a.get_by_role("button", name="Share-ссылка").click()
         expect(page_a.locator("#toast")).to_contain_text("Share-ссылка")
         if captured_link:
