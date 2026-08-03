@@ -86,7 +86,7 @@
     <div class="sched-wrap">
       <table class="schedule">
         <thead><tr>
-          <th>Ref</th><th>Описание</th><th>P,кВт</th><th>cosφ</th><th>Фаза</th><th>IB,A</th>
+          <th>Ref</th><th>Описание</th><th>P,кВт</th><th class="no-caps">cos φ</th><th>Фаза</th><th>IB,A</th>
           <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th>
         </tr></thead>
         <tbody id="sharedScheduleBody"></tbody>
@@ -128,7 +128,7 @@
     <div class="sched-wrap">
       <table class="schedule">
         <thead><tr>
-          <th>Ref</th><th>Описание</th><th>P,кВт</th><th>cosφ</th><th>Фаза</th><th>IB,A</th>
+          <th>Ref</th><th>Описание</th><th>P,кВт</th><th class="no-caps">cos φ</th><th>Фаза</th><th>IB,A</th>
           <th>Аппарат</th><th>УЗО</th><th>Кабель</th><th>L,м</th><th>IZ,A</th><th>ΔU%</th><th>Статус</th><th></th>
         </tr></thead>
         <tbody id="scheduleBody"></tbody>
@@ -145,14 +145,14 @@
 
     <section class="panel board-copilot" id="boardCopilot">
       <div class="panel-h">
-        Copilot щита · proposal only
-        <span class="badge review">UNSIGNED_ADVISORY</span>
+        Копилот щита · только предложения
+        <span class="badge review" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>
       </div>
       <div id="boardCopilotMessages" class="chat board-chat">
         <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
       </div>
       <div class="chatbar">
-        <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер на L2 и покажи детерминированный diff"></textarea>
+        <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер 5 кВт на L2 и покажи, что изменится"></textarea>
         <button id="boardCopilotSend" class="primary">Отправить</button>
       </div>
       <div id="boardProposal" class="proposal" hidden>
@@ -163,7 +163,7 @@
           <button id="boardProposalReject" class="ghost">Отклонить</button>
         </div>
       </div>
-      <button id="boardProposalUndo" class="ghost" hidden>Отменить последнее применение Copilot</button>
+      <button id="boardProposalUndo" class="ghost" hidden>Отменить последнее применение копилота</button>
     </section>
 
     <section class="panel norm-panel">
