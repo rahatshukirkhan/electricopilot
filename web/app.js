@@ -147,7 +147,7 @@ function route() {
   $('btnNorms').classList.toggle('active', Boolean(mn));
   if (mn) {
     show('norms');
-    crumbs([['Проекты', '#/'], ['Нормы', '#/norms']]);
+    crumbs(['Щиты', '#/']);
     topBadge(''); setSave(''); $('saveState').textContent = '';
     loadNormDocs().then(() => {
       if (mn[1]) return openNormDoc(mn[1], mn[2] ? { anchor: mn[2] } : {});
@@ -160,7 +160,7 @@ function route() {
   if (ms) {
     PROJ = null;
     show('shared');
-    crumbs([['Проекты', '#/'], ['Только просмотр', '']]);
+    crumbs(['Щиты', '#/']);
     topBadge('');
     setSave(''); $('saveState').textContent = 'только чтение';
     renderShared(ms[1]);
@@ -170,10 +170,10 @@ function route() {
   if (mp) {
     PROJ = projGet(mp[1]);
     if (!PROJ) { go('/'); return; }
-    show('print'); renderPrint(); crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id], ['Печать', '']]); topBadge('');
+    show('print'); renderPrint(); crumbs([PROJ.name, '#/p/' + PROJ.id]); topBadge('');
     return;
   }
-  if (!m) { renderDashboard(); show('dashboard'); crumbs([['Проекты', '#/']]); topBadge(''); return; }
+  if (!m) { renderDashboard(); show('dashboard'); crumbs(null); topBadge(''); return; }
   const pid = m[1], cid = m[2];
   PROJ = projGet(pid);
   if (!PROJ) { go('/'); return; }
@@ -181,10 +181,25 @@ function route() {
   else { renderProject(); show('project'); }
 }
 function show(s) { $('screen-' + s).hidden = false; }
-function crumbs(items) { $('crumbs').innerHTML = items.map((it, i) => i < items.length - 1 ? `<a data-h="${it[1]}">${esc(it[0])}</a> ›` : `<span>${esc(it[0])}</span>`).join(' '); }
+// design-v2-spec §2.2: #crumbs renders ONE "← back-context" element, not a breadcrumb trail — the
+// current screen's own name is already in its h1/h2, so it's never repeated here. `back` is
+// [label, hash] for the parent screen, or null on the dashboard (nothing to go back to).
+function crumbs(back) {
+  $('crumbs').innerHTML = back ? `<a data-h="${esc(back[1])}">← ${esc(back[0])}</a>` : '';
+}
 $('crumbs').addEventListener('click', e => { const h = e.target.dataset.h; if (h) go(h.replace(/^#/, '')); });
 $('homeLink').addEventListener('click', () => go('/'));
 function topBadge(s) { const b = $('statusBadge'); b.textContent = s ? stLabel(s) : '—'; b.title = s || ''; b.className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[s] || ''); }
+
+// ---------- Russian count agreement (цепь/цепи/цепей, требует/требуют) ----------
+function pluralRu(n, one, few, many) {
+  const n100 = Math.abs(n) % 100, n10 = n100 % 10;
+  if (n100 > 10 && n100 < 20) return many;
+  if (n10 === 1) return one;
+  if (n10 > 1 && n10 < 5) return few;
+  return many;
+}
+function createNewProject() { const p = blankProject(); projSet(p); go('/p/' + p.id); }
 
 // ========================= DASHBOARD =========================
 function renderDashboard(filter) {
@@ -192,11 +207,21 @@ function renderDashboard(filter) {
   if (filter) idx = idx.filter(p => (p.name + ' ' + (p.board_ref || '')).toLowerCase().includes(filter.toLowerCase()));
   const grid = $('projectGrid');
   if (!idx.length) {
-    grid.innerHTML = `<div class="empty">Пока нет щитов.<br><br>Нажми <b>+ Новый щит</b> или <b>Загрузить пример</b>, чтобы начать.</div>`; return;
+    grid.innerHTML = `<div class="empty">Пока нет ни одного щита.<br>Начни — так проще увидеть, как это работает.
+      <br><br><button id="btnEmptyNew" class="primary cta">+ Новый щит</button></div>`;
+    return;
   }
+  // design-v2-spec §2.5: one worded status line per card ("4 цепи · 4 требуют проверки"), not 4 colored chips —
+  // color lives only in the dot, tinted to the worst status present.
   grid.innerHTML = idx.map(p => {
     const r = p.rollup?.counts || { PASS: 0, FAIL: 0, NEEDS_REVIEW: 0 };
-    const chip = (n, cls, lab, code) => `<span class="chip ${n ? cls : 'n'}"${code ? ` title="${esc(code)}"` : ''}>${n} ${esc(lab)}</span>`;
+    const count = p.count || 0;
+    const issues = (r.FAIL || 0) + (r.NEEDS_REVIEW || 0);
+    const worst = r.FAIL ? 'FAIL' : (r.NEEDS_REVIEW ? 'NEEDS_REVIEW' : (count ? 'PASS' : ''));
+    const circuitsWord = pluralRu(count, 'цепь', 'цепи', 'цепей');
+    const statusLine = !count ? 'нет цепей'
+      : issues ? `${count} ${circuitsWord} · ${issues} ${pluralRu(issues, 'требует', 'требуют', 'требуют')} проверки`
+      : `${count} ${circuitsWord} · все соответствуют`;
     return `<div class="card" data-open="${p.id}">
       <div class="card-top">
         <h3>${esc(p.name)} <span class="cref">${esc(p.board_ref || '')}</span></h3>
@@ -210,7 +235,7 @@ function renderDashboard(filter) {
           </div>
         </div>
       </div>
-      <div class="chips">${chip(p.count || 0, 'n', 'цепей')}${chip(r.PASS, 'pass', 'соответствуют', 'PASS')}${chip(r.NEEDS_REVIEW, 'review', 'требует проверки', 'NEEDS_REVIEW')}${chip(r.FAIL, 'fail', 'не проходят', 'FAIL')}</div>
+      <div class="card-status ${worst}"><span class="dot"></span>${esc(statusLine)}</div>
       <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div></div>`;
   }).join('');
 }
@@ -221,6 +246,7 @@ function closeCardMenus() {
   document.querySelectorAll('#projectGrid [data-kebab]').forEach(b => b.setAttribute('aria-expanded', 'false'));
 }
 $('projectGrid').addEventListener('click', e => {
+  if (e.target.id === 'btnEmptyNew') { createNewProject(); return; }
   const kebab = e.target.closest('[data-kebab]');
   if (kebab) {
     const menu = kebab.nextElementSibling, willOpen = menu.hidden;
@@ -237,7 +263,7 @@ $('projectGrid').addEventListener('click', e => {
 });
 document.addEventListener('click', e => { if (!e.target.closest('#projectGrid')) closeCardMenus(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCardMenus(); });
-$('btnNewProject').addEventListener('click', () => { const p = blankProject(); projSet(p); go('/p/' + p.id); });
+$('btnNewProject').addEventListener('click', createNewProject);
 $('btnSample').addEventListener('click', () => { const p = sampleProject(); projSet(p); go('/p/' + p.id); });
 $('dashSearch').addEventListener('input', e => renderDashboard(e.target.value));
 $('importFile').addEventListener('change', importProject);
@@ -364,7 +390,7 @@ async function renderProject() {
     renderBoardProposal(null); $('boardProposalUndo').hidden = true;
     $('boardCopilotMessages').innerHTML = '<div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>';
   }
-  crumbs([['Проекты', '#/'], [p.name, '#/p/' + p.id]]);
+  crumbs(['Щиты', '#/']);
   $('b_name').value = p.name; $('b_ref').value = p.board_ref || ''; $('b_location').value = p.location || '';
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
   $('projDisclaimer').textContent = 'Рекомендательный расчёт; требуется подпись инженера по каждой цепи и по щиту.';
@@ -431,7 +457,8 @@ $('scheduleBody').addEventListener('click', e => {
   else if (d.dupc) { const c = PROJ.circuits.find(x => x.id === d.dupc); const copy = JSON.parse(JSON.stringify(c)); copy.id = uid('ckt'); copy.ref = (c.ref || '') + '\''; copy.sort_index = PROJ.circuits.length; PROJ.circuits.push(copy); projSet(PROJ); renderProject(); }
   else { const tr = e.target.closest('tr'); if (tr?.dataset.cid) go('/p/' + PROJ.id + '/c/' + tr.dataset.cid); }
 });
-const saveBoardMeta = debounce(() => { PROJ.name = $('b_name').value; PROJ.board_ref = $('b_ref').value; PROJ.location = $('b_location').value; projSet(PROJ); crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id]]); }, 500);
+// crumb text no longer echoes the board name (design-v2-spec §2.2: it's a static "← Щиты" on this screen)
+const saveBoardMeta = debounce(() => { PROJ.name = $('b_name').value; PROJ.board_ref = $('b_ref').value; PROJ.location = $('b_location').value; projSet(PROJ); }, 500);
 ['b_name', 'b_ref', 'b_location'].forEach(id => $(id).addEventListener('input', () => { setSave('unsaved'); saveBoardMeta(); }));
 $('btnBackDash').addEventListener('click', () => go('/'));
 $('btnAddCircuit').addEventListener('click', () => { const c = newCircuit(); c.sort_index = PROJ.circuits.length; c.ref = 'C' + (PROJ.circuits.length + 1); PROJ.circuits.push(c); projSet(PROJ); go('/p/' + PROJ.id + '/c/' + c.id); });
@@ -449,11 +476,12 @@ $('btnSldRefresh').addEventListener('click', loadSldPreview);
 function initDropdown(toggle, menu) {
   const setOpen = open => { menu.hidden = !open; toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); };
   toggle.addEventListener('click', e => { e.stopPropagation(); setOpen(menu.hidden); });
-  menu.addEventListener('click', e => { if (e.target.closest('button')) setOpen(false); });
+  menu.addEventListener('click', e => { if (e.target.closest('button,label')) setOpen(false); });
   document.addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target) && e.target !== toggle) setOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setOpen(false); toggle.focus(); } });
 }
 initDropdown($('btnMore'), $('boardMoreMenu'));
+initDropdown($('btnDashMore'), $('dashMoreMenu'));
 
 // ---------- board-level Copilot: proposal only (docs/15-copilot-tools) ----------
 function boardCopilotMessage(cls, text, sub = '') {
@@ -694,7 +722,7 @@ async function nlAddCircuit() {
 function openEditor(cid) {
   CID = cid;
   const c = PROJ.circuits.find(x => x.id === cid); if (!c) { go('/p/' + PROJ.id); return; }
-  crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id], [c.ref || 'цепь', '']]);
+  crumbs([PROJ.name, '#/p/' + PROJ.id]);
   fillForm(c.request, c.meta);
   $('edRef').textContent = c.ref || '(без ref)';
   setSignoffBadge(c.signoff);

@@ -8,7 +8,7 @@
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600&display=swap" />
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -16,12 +16,12 @@
   <aside class="sidebar">
     <div class="brand-mark">
       <svg class="bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg>
-      <span class="brand-text">ElectriCopilot <b>Studio</b></span>
+      <span class="brand-text">ElectriCopilot</span>
     </div>
     <nav class="side-nav">
-      <button id="homeLink" class="side-nav-item" title="К проектам">
+      <button id="homeLink" class="side-nav-item" title="К щитам">
         <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Проекты
+        Щиты
       </button>
       <button id="btnNorms" class="side-nav-item nlib-topnav" title="Нормативная библиотека">
         <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5V4.5Z"/><path d="M4 19a2.5 2.5 0 0 1 2.5-2.5H20"/></svg>
@@ -37,7 +37,9 @@
   <div class="workspace">
     <header class="topbar">
       <nav class="crumbs" id="crumbs"></nav>
-      <div id="statusBadge" class="badge">—</div>
+      <!-- design-v2-spec §2.3: one status per screen, shown on the object itself (board/circuit/card),
+           never here — kept in the DOM (id contract) but permanently hidden. -->
+      <div id="statusBadge" class="badge" hidden>—</div>
     </header>
     <div class="advisory" id="advisory">
       Рекомендательно · значения норм-таблиц <b>синтетические</b> (не IEC) · ссылки на пункты IEC <b>реальные</b> ·
@@ -48,13 +50,18 @@
       <!-- ============ DASHBOARD ============ -->
       <section id="screen-dashboard" class="screen">
         <div class="dash-head">
-          <h2>Проекты — щиты</h2>
+          <h2>Щиты</h2>
           <div class="dash-actions">
             <input id="dashSearch" placeholder="поиск…" />
-            <button id="btnNewProject" class="primary">+ Новый щит</button>
-            <button id="btnSample" class="ghost">Загрузить пример</button>
-            <label class="ghost filebtn">Импорт щита из XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
-            <label class="ghost filebtn">Открыть файл проекта<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
+            <button id="btnNewProject" class="primary cta">+ Новый щит</button>
+            <div class="menu-wrap">
+              <button id="btnDashMore" class="ghost" type="button" aria-haspopup="true" aria-expanded="false" title="Ещё действия">Ещё <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+              <div id="dashMoreMenu" class="dropdown-menu" hidden>
+                <button id="btnSample" class="ghost">Загрузить пример</button>
+                <label class="ghost filebtn">Импорт щита из XLSX/CSV<input id="scheduleImportFile" type="file" accept=".xlsx,.csv" hidden /></label>
+                <label class="ghost filebtn">Открыть файл проекта<input id="importFile" type="file" accept=".json,.ecproj.json" hidden /></label>
+              </div>
+            </div>
           </div>
         </div>
         <section id="importReview" class="panel import-review" hidden>
@@ -140,7 +147,8 @@
                 <button id="btnPrint" class="ghost" title="Печатная страница / PDF"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Печать</button>
                 <button id="btnReport" class="ghost">Отчёт по щиту</button>
                 <button id="btnExportProj" class="ghost">Сохранить файл проекта</button>
-                <button id="btnBackDash" class="ghost">← К проектам</button>
+                <!-- design-v2-spec §2.2: the single global "← Назад" crumb replaces this button — id stays for the JS contract -->
+                <button id="btnBackDash" class="ghost" hidden>← К щитам</button>
               </div>
             </div>
           </div>
@@ -240,7 +248,8 @@
       <!-- ============ CIRCUIT EDITOR ============ -->
       <section id="screen-editor" class="screen" hidden>
         <div class="editor-bar">
-          <button id="btnBackPanel" class="ghost">← К щиту</button>
+          <!-- design-v2-spec §2.2: the single global "← Назад" crumb replaces this button — id stays for the JS contract -->
+          <button id="btnBackPanel" class="ghost" hidden>← К щиту</button>
           <div class="ed-nav"><button id="btnPrev" class="mini">‹ пред</button><span id="edRef"></span><button id="btnNext" class="mini">след ›</button></div>
           <div class="ed-right">
             <span id="edSignoff" class="badge small" title="UNSIGNED_ADVISORY">Не подписано · рекомендательно</span>

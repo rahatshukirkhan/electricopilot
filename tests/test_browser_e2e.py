@@ -147,6 +147,8 @@ def _wait_for_project(page: Page) -> str:
 def _load_sample(page: Page, server: StudioServer) -> str:
     page.goto(server.url)
     expect(page.locator("#modeTag")).to_have_text("ИИ: резервный режим")
+    # "Загрузить пример" lives inside the dashboard's "Ещё" menu (design-v2-spec §2.5) — open it first.
+    page.get_by_role("button", name="Ещё", exact=True).click()
     with page.expect_response(lambda response: "/api/project-report" in response.url) as report:
         page.get_by_role("button", name="Загрузить пример").click()
     assert report.value.ok
