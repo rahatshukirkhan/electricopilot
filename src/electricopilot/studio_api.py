@@ -174,6 +174,7 @@ def _heavy_operation() -> Any:
 def health() -> dict[str, str]:
     cfg = get_config()
     return {"status": "ok", "mode": "live" if cfg.llm_available else "fallback",
+            "llm_admission": cfg.llm_admission_mode,
             "model_fast": cfg.model_fast, "model_strong": cfg.model_strong,
             # The in-memory override is only injected by tests in-process. Reporting it as
             # available lets the real browser exercise the same sync/share paths as Neon;

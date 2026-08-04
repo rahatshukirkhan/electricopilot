@@ -89,6 +89,15 @@ def test_disabled_admission_never_constructs_live_llm_client(monkeypatch: Any) -
     assert response.json()["detail"]["error"] == "llm_admission_not_configured"
 
 
+def test_health_reports_admission_mode(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        studio_api, "get_config", lambda: _live_config(llm_admission_mode="disabled"),
+    )
+    payload = TestClient(studio_api.app).get("/api/health").json()
+
+    assert payload["llm_admission"] == "disabled"
+
+
 def test_shared_budget_blocks_a_second_client_before_llm(monkeypatch: Any) -> None:
     calls = 0
 
