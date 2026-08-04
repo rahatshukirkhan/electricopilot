@@ -28,7 +28,10 @@ SYSTEM = (
     "норм по памяти — это делают только инструменты. Числа в финальном ответе допустимы "
     "только из результатов инструментов.\n"
     "- Сервер ничего не меняет: изменения возможны только через propose_changes, применяет "
-    "их пользователь. Перед add/edit собери полный SizingRequest.\n"
+    "их пользователь. Перед add/edit собери полный SizingRequest: обязательны "
+    "installation.method и installation.length_m; method, material, insulation и "
+    "ambient_temp_c бери из supply щита, если пользователь не сказал иное. Если инструмент "
+    "вернул ошибку валидации — исправь аргументы и повтори вызов.\n"
     "- Не утверждай соответствие нормам; напоминай, что итог — UNSIGNED_ADVISORY и требует "
     "подписи инженера.\n"
     "\n"
@@ -189,17 +192,15 @@ def run_copilot(
 
         messages.append(_assistant_message(turn))
         for call in calls:
+            call_id = str(call.get("id") or "")
+            name = str(call.get("name") or "")
+            arguments = call.get("arguments")
+            if not call_id or not name or not isinstance(arguments, dict):
+                return _failure(model, "invalid_tool", "Copilot вернул некорректный вызов инструмента.")
+            remaining = time_budget_seconds - (clock() - started)
+            if remaining <= 0:
+                return _failure(model, "timeout", "Время Copilot истекло; проект не изменён.")
             try:
-                call_id = str(call["id"])
-                name = str(call["name"])
-                if not call_id or not name:
-                    raise CopilotToolError("invalid_tool", "tool call requires id and name")
-                arguments = call["arguments"]
-                if not isinstance(arguments, dict):
-                    raise CopilotToolError("invalid_tool", "tool arguments must be an object")
-                remaining = time_budget_seconds - (clock() - started)
-                if remaining <= 0:
-                    return _failure(model, "timeout", "Время Copilot истекло; проект не изменён.")
                 payload, produced, tool_evidence = execute_tool(
                     name,
                     arguments,
@@ -212,9 +213,23 @@ def run_copilot(
                     return _failure(
                         model, "timeout", "Время Copilot истекло; проект не изменён.",
                     )
-            except (CopilotToolError, LlmConfigError, LlmError) as exc:
-                code = exc.code if isinstance(exc, CopilotToolError) else "model_error"
-                return _failure(model, code, f"Copilot остановлен: {exc}")
+            except (LlmConfigError, LlmError) as exc:
+                return _failure(model, "model_error", f"Copilot остановлен: {exc}")
+            except CopilotToolError as exc:
+                # A recoverable validation error (missing SizingRequest field, unknown
+                # circuit id, bad ops) goes back to the model as a structured tool result
+                # so it can correct itself; iterations and the time budget stay the caps.
+                # Error text is NOT evidence — no numbers from it may enter the reply.
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": name,
+                    "content": json.dumps(
+                        {"ok": False, "error": exc.code, "message": str(exc)},
+                        ensure_ascii=False, sort_keys=True,
+                    ),
+                })
+                continue
             evidence.extend(tool_evidence)
             messages.append({
                 "role": "tool",
