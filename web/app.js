@@ -555,14 +555,56 @@ function renderBoardProposal(proposal, baseVersion = null) {
   // importIdentity/sharedIdentity/print all run through humanizeSections already.
   $('boardProposalIdentity').textContent = humanizeSections(`${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`);
 }
+// Floor-plan photos attached to the NEXT copilot message; sent as bounded data URLs
+// (docs/15 §15.2: max 2, raster only, downscaled client-side to fit max_request_bytes).
+let BOARD_COPILOT_IMAGES = [];
+function renderCopilotAttachments() {
+  const root = $('boardCopilotAttachments');
+  root.hidden = !BOARD_COPILOT_IMAGES.length;
+  root.innerHTML = BOARD_COPILOT_IMAGES.map((url, index) =>
+    `<span class="attach-chip"><img src="${url}" alt="план ${index + 1}" />план ${index + 1}<button type="button" class="attach-x" data-i="${index}" title="Убрать">×</button></span>`).join('');
+  root.querySelectorAll('.attach-x').forEach(button => button.addEventListener('click', () => {
+    BOARD_COPILOT_IMAGES.splice(Number(button.dataset.i), 1); renderCopilotAttachments();
+  }));
+}
+function downscalePlanImage(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+    img.src = url;
+  });
+}
+async function attachPlanImage(file) {
+  if (!file) return;
+  if (BOARD_COPILOT_IMAGES.length >= 2) { toast('Не больше двух изображений на одно сообщение.'); return; }
+  try {
+    const dataUrl = await downscalePlanImage(file);
+    if (dataUrl.length > 1500000) { toast('Фото слишком большое даже после сжатия — обрежьте план.'); return; }
+    BOARD_COPILOT_IMAGES.push(dataUrl); renderCopilotAttachments();
+  } catch { toast('Не удалось прочитать файл как изображение — нужен JPG, PNG или WebP.'); }
+}
 async function sendBoardCopilot() {
-  const input = $('boardCopilotInput'), message = input.value.trim();
+  const input = $('boardCopilotInput');
+  const images = BOARD_COPILOT_IMAGES.slice(0, 2);
+  const message = input.value.trim() || (images.length ? 'Разбери приложенную планировку и предложи цепи по зонам.' : '');
   if (!message || !PROJ) return;
   const baseVersion = PROJ.updated_at;
-  input.value = ''; boardCopilotMessage('user', message); boardCopilotMessage('bot', 'Copilot планирует и вызывает инструменты…');
+  input.value = ''; BOARD_COPILOT_IMAGES = []; renderCopilotAttachments();
+  boardCopilotMessage('user', message + (images.length ? ` 📷×${images.length}` : ''));
+  boardCopilotMessage('bot', 'Copilot планирует и вызывает инструменты…');
   const busy = $('boardCopilotMessages').lastChild;
   try {
-    const response = await postJSON('/api/copilot', { project: PROJ, message, history: BOARD_COPILOT_HISTORY.slice(-20) });
+    const response = await postJSON('/api/copilot', { project: PROJ, message, history: BOARD_COPILOT_HISTORY.slice(-20), images });
     busy.remove();
     boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
     BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
@@ -610,6 +652,12 @@ function undoBoardProposal() {
 }
 $('boardCopilotSend').addEventListener('click', sendBoardCopilot);
 $('boardCopilotInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBoardCopilot(); });
+$('boardCopilotAttach').addEventListener('click', () => $('boardCopilotFile').click());
+$('boardCopilotFile').addEventListener('change', async e => { const file = e.target.files[0]; e.target.value = ''; await attachPlanImage(file); });
+$('boardCopilotInput').addEventListener('paste', e => {
+  const item = Array.from(e.clipboardData?.items || []).find(entry => entry.type.startsWith('image/'));
+  if (item) { e.preventDefault(); attachPlanImage(item.getAsFile()); }
+});
 $('boardProposalApply').addEventListener('click', applyBoardProposal);
 $('boardProposalReject').addEventListener('click', () => { renderBoardProposal(null); boardCopilotMessage('bot', 'Предложение отклонено; проект не изменён.'); });
 $('boardProposalUndo').addEventListener('click', undoBoardProposal);

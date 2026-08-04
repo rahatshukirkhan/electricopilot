@@ -198,10 +198,13 @@
           <div id="boardCopilotMessages" class="chat board-chat">
             <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
           </div>
+          <div id="boardCopilotAttachments" class="attachments" hidden></div>
           <div class="chatbar">
-            <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер 5 кВт на L2 и покажи, что изменится"></textarea>
+            <textarea id="boardCopilotInput" rows="2" placeholder="Например: «кухня: духовка 3,6 кВт, ПММ, холодильник — добавь цепи», «выделенная линия на бойлер 2 кВт с УЗО» — или приложи фото планировки"></textarea>
+            <button id="boardCopilotAttach" class="ghost" title="Приложить фото планировки (JPG/PNG/WebP, до 2 шт.)">📷</button>
             <button id="boardCopilotSend" class="primary">Отправить</button>
           </div>
+          <input id="boardCopilotFile" type="file" accept="image/*" hidden />
           <div id="boardProposal" class="proposal" hidden>
             <div id="boardProposalDiff"></div>
             <p id="boardProposalIdentity" class="disclaimer"></p>
