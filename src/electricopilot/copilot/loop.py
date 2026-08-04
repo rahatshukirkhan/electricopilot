@@ -14,9 +14,9 @@ from .models import CopilotResponse, HistoryMessage, Proposal
 from .tools import (
     TOOL_DEFINITIONS,
     CopilotToolError,
+    board_state_payload,
     check_reply_provenance,
     execute_tool,
-    report_tool_payload,
 )
 
 SYSTEM = (
@@ -36,9 +36,10 @@ SYSTEM = (
     "подписи инженера.\n"
     "\n"
     "Как работать с запросом:\n"
-    "1. Сначала вызови get_board_state: пойми ввод (фазы, напряжение), способ прокладки, "
-    "материал и типичные параметры существующих цепей — новые цепи наследуют эти условия, "
-    "если пользователь не сказал иное.\n"
+    "1. Текущее состояние щита уже приложено отдельным системным сообщением: ввод (фазы, "
+    "напряжение), способ прокладки, материал и параметры существующих цепей — новые цепи "
+    "наследуют эти условия, если пользователь не сказал иное. get_board_state вызывай "
+    "только если состояние нужно перечитать после ошибки.\n"
     "2. Если пользователь описал квартиру, зону или технику (кухня, ТВ-зона, бойлер, "
     "санузел, кондиционер) — составь план цепей по практике: стационарная техника примерно "
     "от 2 кВт (варочная, духовка, посудомойка, стиральная, бойлер, кондиционер) — отдельная "
@@ -52,8 +53,10 @@ SYSTEM = (
     "или длина линии неизвестна — либо задай ОДИН короткий вопрос сразу по всем недостающим "
     "пунктам, либо прими типовое допущение, явно перечисли допущения в ответе и попроси "
     "подтвердить.\n"
-    "4. Собери ВСЕ операции в один вызов propose_changes; отдельную цепь можно предварительно "
-    "проверить через compute, свободное описание одной цепи — разобрать через parse_circuit.\n"
+    "4. Работай за МИНИМУМ ходов: обычно первый и единственный вызов — сразу propose_changes "
+    "со ВСЕМИ операциями; diff по каждой цепи он рассчитает сам. НЕ вызывай compute на "
+    "каждую цепь — только для точечной проверки одной спорной; parse_circuit — только для "
+    "непонятной свободной формулировки.\n"
     "5. Если приложено фото или план (в том числе PDF): перечисли, какие помещения и "
     "технику ты на нём распознал, и составь план по п.2. Длины трасс по картинке не "
     "измеряй — это допущения, назови их и попроси подтвердить.\n"
@@ -137,7 +140,7 @@ def run_copilot(
     model: str,
     parse_model: str,
     attachments: list[str] | None = None,
-    max_iterations: int = 6,
+    max_iterations: int = 8,
     time_budget_seconds: float = 45.0,
     clock: Callable[[], float] = time.monotonic,
 ) -> CopilotResponse:
@@ -145,12 +148,22 @@ def run_copilot(
     started = clock()
     canonical = validate_project(project)
     pack = load_data_pack(canonical.norm_pack)
-    baseline = report_tool_payload(build_project_report(canonical, data_pack=pack))
+    # The fresh board state ships up-front as context: a slow reasoning turn spent on a
+    # get_board_state round-trip was costing 1-2 of the loop's few iterations on every
+    # real request. The payload doubles as baseline provenance evidence.
+    baseline = board_state_payload(canonical, build_project_report(canonical, data_pack=pack))
     evidence: list[Any] = [baseline]
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM}]
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM},
+        {"role": "system", "content": (
+            "Текущее состояние щита (свежий результат get_board_state):\n"
+            + json.dumps(baseline, ensure_ascii=False, sort_keys=True)
+        )},
+    ]
     messages.extend(item.model_dump() for item in history)
     messages.append(_user_message(message, attachments or []))
     proposal: Proposal | None = None
+    last_tool_error: str | None = None
 
     def parse(text: str, remaining: float) -> Any:
         return intake_parse(text, client, model=parse_model, timeout=remaining)
@@ -220,6 +233,7 @@ def run_copilot(
                 # circuit id, bad ops) goes back to the model as a structured tool result
                 # so it can correct itself; iterations and the time budget stay the caps.
                 # Error text is NOT evidence — no numbers from it may enter the reply.
+                last_tool_error = str(exc)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
@@ -250,4 +264,8 @@ def run_copilot(
                     unverified_numbers=unverified,
                 )
 
-    return _failure(model, "iteration_limit", "Copilot достиг лимита итераций; проект не изменён.")
+    detail = f" Последняя ошибка инструмента: {last_tool_error}" if last_tool_error else ""
+    return _failure(
+        model, "iteration_limit",
+        f"Copilot достиг лимита итераций; проект не изменён.{detail}",
+    )

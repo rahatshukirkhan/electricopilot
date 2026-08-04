@@ -51,6 +51,11 @@ class Config:
     # docs/20 §6: переранжирование выдачи библиотеки быстрой моделью. По умолчанию
     # выключено — лексический порядок детерминирован, а модель здесь только сортирует.
     norms_llm_rerank: bool = False
+    # Tool-loop model for the board Copilot; empty means "use model_fast". The strong
+    # reasoning model spends 10-25 s per turn and blows the 45 s loop budget on real
+    # apartment briefs, while every engineering number is produced deterministically
+    # anyway. Owners can pin ELECTRICOPILOT_MODEL_COPILOT to the strong slug.
+    model_copilot: str = ""
 
     @property
     def llm_available(self) -> bool:
@@ -67,13 +72,14 @@ def get_config() -> Config:
     # distributed perimeter policy (docs/19); local runs retain bounded test/dev use.
     default_admission = "disabled" if os.environ.get("VERCEL") == "1" else "local"
     configured_admission = os.environ.get("ELECTRICOPILOT_LLM_ADMISSION_MODE", "").strip().lower()
+    model_fast = os.environ.get("ELECTRICOPILOT_MODEL_FAST", "google/gemini-3-flash-preview")
     return Config(
         openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", "").strip(),
         openrouter_base_url=os.environ.get(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ).rstrip("/"),
         model_strong=os.environ.get("ELECTRICOPILOT_MODEL_STRONG", "google/gemini-3.1-pro-preview"),
-        model_fast=os.environ.get("ELECTRICOPILOT_MODEL_FAST", "google/gemini-3-flash-preview"),
+        model_fast=model_fast,
         app_title=os.environ.get("OPENROUTER_APP_TITLE", "ElectriCopilot"),
         http_referer=os.environ.get(
             "OPENROUTER_HTTP_REFERER", "https://github.com/rahatshukirkhan/electricopilot"
@@ -93,4 +99,5 @@ def get_config() -> Config:
         ),
         llm_window_seconds=_positive_int("ELECTRICOPILOT_LLM_WINDOW_SECONDS", 60),
         norms_llm_rerank=_bool("NORMS_LLM_RERANK", False),
+        model_copilot=os.environ.get("ELECTRICOPILOT_MODEL_COPILOT", "").strip() or model_fast,
     )

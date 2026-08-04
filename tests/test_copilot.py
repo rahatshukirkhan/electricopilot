@@ -217,14 +217,29 @@ def test_validation_error_feeds_back_to_the_model_instead_of_aborting() -> None:
     assert feedback["ok"] is False and feedback["error"] == "invalid_proposal"
 
 
-def test_unrecovered_validation_error_ends_as_iteration_limit() -> None:
+def test_unrecovered_validation_error_ends_as_iteration_limit_with_diagnostics() -> None:
     bad_turn = _tool_turn(
         "propose_changes", {"ops": [{"op": "delete", "circuit_id": "missing"}]},
     )
-    result = _run(_project(), ScriptedClient([deepcopy(bad_turn) for _ in range(6)]))
+    result = _run(_project(), ScriptedClient([deepcopy(bad_turn) for _ in range(8)]))
 
     assert not result.ok and result.error == "iteration_limit"
     assert result.proposal is None
+    assert "Последняя ошибка инструмента" in result.reply
+
+
+def test_board_state_is_preinjected_as_system_context() -> None:
+    client = ScriptedClient([{"content": "ок", "tool_calls": []}])
+
+    _run(_project(with_circuit=True), client)
+
+    first_turn = client.seen_messages[0]
+    assert first_turn[0]["role"] == "system" and first_turn[1]["role"] == "system"
+    state_message = first_turn[1]["content"]
+    assert "Текущее состояние щита" in state_message
+    state = json.loads(state_message.split("\n", 1)[1])
+    assert state["project"]["circuits"][0]["request"]["installation"]["length_m"] == 18
+    assert "result" not in state["project"]["circuits"][0]
 
 
 def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None:
@@ -234,7 +249,7 @@ def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None
     ]))
     assert explained.ok and explained.provenance_ok and explained.proposal is None
 
-    repeated = [_tool_turn("get_board_state", {}) for _ in range(6)]
+    repeated = [_tool_turn("get_board_state", {}) for _ in range(8)]
     limited = _run(_project(), ScriptedClient(repeated))
     assert limited.error == "iteration_limit" and limited.incomplete
 
