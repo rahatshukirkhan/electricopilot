@@ -108,7 +108,11 @@ class OpenRouterClient:
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
-            "max_tokens": 2048,
+            # Reasoning models (Gemini 3.x) burn output budget on hidden thinking before
+            # emitting tool calls; 2048 produced empty finish_reason=length turns on real
+            # apartment briefs. Generous cap + low effort keeps the orchestration loop fast.
+            "max_tokens": 8192,
+            "reasoning": {"effort": "low"},
         }
         headers = {
             "Authorization": f"Bearer {cfg.openrouter_api_key}",
@@ -117,19 +121,23 @@ class OpenRouterClient:
         }
         url = f"{cfg.openrouter_base_url}/chat/completions"
         last_exc: Exception | None = None
-        for _attempt in range(2):
+        # The first attempt gets most of the wall budget (reasoning + a full-board proposal
+        # is slow); the retry gets the remainder so both attempts stay inside `timeout`.
+        attempt_timeouts = (max(0.1, timeout * 0.7), max(0.1, timeout * 0.3))
+        for attempt_timeout in attempt_timeouts:
             try:
                 response = httpx.post(
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=max(0.1, timeout / 2),
+                    timeout=attempt_timeout,
                 )
             except httpx.HTTPError as exc:
                 last_exc = exc
                 continue
             if response.status_code == 200:
-                message = response.json()["choices"][0]["message"]
+                choice = response.json()["choices"][0]
+                message = choice["message"]
                 normalized_calls: list[dict[str, Any]] = []
                 for call in message.get("tool_calls") or []:
                     function = call.get("function") or {}
@@ -146,7 +154,13 @@ class OpenRouterClient:
                     })
                 content = message.get("content")
                 if not content and not normalized_calls:
-                    raise LlmError("empty tool-calling response")
+                    # A thinking-only turn (all budget spent on reasoning) is transient:
+                    # retry once before surfacing a diagnosable error.
+                    last_exc = LlmError(
+                        "empty tool-calling response "
+                        f"(finish_reason={choice.get('finish_reason')})"
+                    )
+                    continue
                 return {"content": content, "tool_calls": normalized_calls}
             body = response.text[:300]
             if response.status_code in (400, 404) and (
