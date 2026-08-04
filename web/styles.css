@@ -1,75 +1,96 @@
 /* ============================================================================
-   ElectriCopilot Studio — «Blueprint Light» design system
-   Light-mode engineering drafting board. Fira Sans (UI) + Fira Code (data/mono).
-   Palette synthesized from ui-ux-pro-max (data-dense dashboard, blueprint paper).
+   ElectriCopilot Studio — «Navy & Burgundy» design system v2 (docs/design-v2-spec.md)
+   Dark navy left sidebar (navigation/status) + light warm-paper workspace (data).
+   IBM Plex Serif (screen titles + board names only) + IBM Plex Sans (UI) +
+   IBM Plex Mono (numbers/data/codes). Light theme only.
    NOTE: CSS variable names + all classes/ids are a frozen contract with app.js —
-   values changed / tokens added, never renamed.
+   values changed / tokens added, never renamed. The v1 (proto-C) token names
+   below are kept as aliases into the v2 palette for exactly that reason.
    ============================================================================ */
 
 :root{
-  /* ---- surfaces (paper → elevated) ---- */
-  --bg:#F8FAFC;              /* app background (paper) */
-  --bg-2:#F1F5FB;
-  --panel:#FFFFFF;          /* cards, panels, header */
-  --panel2:#EEF3FA;         /* inputs, table header, secondary surfaces */
-  --elev:#E3ECF7;           /* hover / raised */
-  --line:#DBEAFE;           /* borders */
-  --line-2:#BFD3F2;         /* dividers, stronger borders */
+  /* ---- v2 canonical palette (design-v2-spec §1) ---- */
+  --paper:#FAF9F6;          /* workspace background (warm paper) */
+  --card:#FFFFFF;           /* panels/cards */
+  --wash:#F1EFE9;           /* inserts, hover, table header */
+  --line:#E5E1D8;           /* borders */
+  --line-2:#D3CDBF;         /* strong borders / dividers */
 
-  /* ---- text ---- */
-  --txt:#0F1B33;            /* primary text (matches JS chart/SLD text) */
-  --dim:#42557A;            /* secondary text (AA >=4.5:1 on all surfaces) */
-  --faint:#5B6B8C;          /* tertiary / hints (AA >=4.5:1) */
+  --ink:#1C2536;            /* primary text (dark navy-ink) */
+  --dim:#5A6478;            /* secondary text */
+  --faint:#8B93A5;          /* tertiary text / hints */
 
-  /* ---- brand / accents ---- */
-  --acc:#1E40AF;            /* primary interactive blue (drafting blue) */
-  --acc-2:#3B82F6;          /* secondary blue */
-  --acc-press:#1E3A8A;      /* pressed primary */
-  --acc-soft:rgba(30,64,175,.10);
-  --acc-ink:#FFFFFF;        /* text on primary buttons */
-  --amber:#B45309;          /* caution / illustrative accent (AA on light) */
-  --amber-soft:rgba(180,83,9,.12);
+  --navy:#24407A;           /* interactive: buttons, links, active states, focus */
+  --navy-press:#1B3161;
+  --navy-soft:rgba(36,64,122,.09);
 
-  /* ---- status ---- */
-  --ok:#15803D; --warn:#B45309; --bad:#DC2626;
-  --ok-soft:rgba(21,128,61,.12); --warn-soft:rgba(180,83,9,.12); --bad-soft:rgba(220,38,38,.12);
+  --burgundy:#7E2440;       /* brand accent: primary CTA, active sidebar item, key figures */
+  --burgundy-press:#66192F;
+  --burgundy-soft:rgba(126,36,64,.08);
+
+  /* review fix: --warn was #A9701E — 4.18:1 on white, 3.6-3.7:1 on --wash/--warn-soft, all below
+     the spec's own ≥4.5:1 bar for the exact "warn on white" pair it calls out for manual checking
+     (design-v2-spec §1). Darkened to #8A5A16 (5.14-5.91:1 across card/wash/warn-soft/burgundy-soft)
+     — same amber hue, still clearly distinct from --ok/--bad. --warn-soft/every hardcoded
+     rgba(169,112,30,…) below is the same color at various alphas — updated together so pill
+     borders/fills stay one consistent amber. */
+  --ok:#2E7D4F; --warn:#8A5A16; --bad:#C8321F;
+  --ok-soft:rgba(46,125,79,.10); --warn-soft:rgba(138,90,22,.10); --bad-soft:rgba(200,50,31,.10);
+
+  /* ---- v1 (proto-C) aliases — old names kept live, remapped onto the v2 palette ---- */
+  --bg:var(--paper); --bg-2:#F1EFE9;
+  --panel:var(--card); --panel2:var(--wash); --elev:#ECE7DC;
+  --txt:var(--ink);
+  --acc:var(--navy); --acc-2:#4F6CA8; --acc-press:var(--navy-press); --acc-soft:var(--navy-soft); --acc-ink:#FFFFFF;
+  --amber:var(--warn); --amber-soft:var(--warn-soft);
 
   /* ---- type ---- */
-  --sans:'Fira Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-  --mono:'Fira Code',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --serif:'IBM Plex Serif',Georgia,serif;    /* screen h1/h2 + board names only — never buttons/tables/panel-h */
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
 
-  /* ---- scale ---- */
-  --r-sm:6px; --r:9px; --r-lg:12px; --r-xl:16px;
-  --shadow:0 1px 2px rgba(15,27,51,.06),0 8px 24px -12px rgba(30,64,175,.12);
-  --shadow-lg:0 1px 2px rgba(15,27,51,.08),0 18px 48px -18px rgba(30,64,175,.18);
-  --ring:0 0 0 2px #fff,0 0 0 4px var(--acc);  /* two-layer: white separator + solid --acc on light */
-  --dur:.16s; --ease:cubic-bezier(.2,.6,.25,1);
+  /* ---- scale (design-v2-spec §1: 6px controls, 10px cards/panels) ---- */
+  --r-sm:6px; --r:6px; --r-lg:10px; --r-xl:10px;
+  --shadow:0 1px 2px rgba(28,37,54,.05);              /* quiet — the only shadow on cards */
+  --shadow-lg:0 4px 16px rgba(28,37,54,.14);           /* noticeable — dropdown/popover/toast only */
+  --ring:0 0 0 2px #fff,0 0 0 4px var(--navy);         /* two-layer: white separator + solid navy */
+  --dur:.14s; --ease:cubic-bezier(.2,.6,.25,1);
 
   /* ---- z-index scale ---- */
   --z-base:0; --z-sticky:20; --z-header:40; --z-toast:100; --z-modal:1000;
+
+  /* ---- sidebar (deep navy, design-v2-spec §2.1) ---- */
+  --sb-bg:#182338;
+  --sb-text:#C4CBDA;
+  --sb-text-dim:#8890A6;
+  --sb-border:rgba(255,255,255,.08);
+  --sb-active-bg:rgba(255,255,255,.06);
+  --sb-hover-bg:rgba(255,255,255,.04);
+
+  /* ---- table header ---- */
+  --thead-bg:var(--wash);
 }
 
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
   margin:0; color:var(--txt);
-  font:400 14px/1.5 var(--sans);
+  font:400 14px/1.55 var(--sans);
   background:var(--bg);
-  background-image:
-    repeating-linear-gradient(0deg, rgba(30,64,175,.045) 0 1px, transparent 1px 24px),
-    repeating-linear-gradient(90deg, rgba(30,64,175,.045) 0 1px, transparent 1px 24px);
-  background-attachment:fixed;
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   font-variant-numeric:tabular-nums;
 }
-::selection{background:rgba(30,64,175,.14)}
+::selection{background:rgba(36,64,122,.16)}
 ::-webkit-scrollbar{width:11px;height:11px}
-::-webkit-scrollbar-thumb{background:#C9D6EA;border:3px solid transparent;border-radius:20px;background-clip:padding-box}
-::-webkit-scrollbar-thumb:hover{background:#B0C6E6;background-clip:padding-box}
-* { scrollbar-width:thin; scrollbar-color:#C9D6EA transparent }
+::-webkit-scrollbar-thumb{background:#D6D0C2;border:3px solid transparent;border-radius:20px;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#C2BAA6;background-clip:padding-box}
+* { scrollbar-width:thin; scrollbar-color:#D6D0C2 transparent }
 
 button{cursor:pointer;font:inherit;color:inherit}
 button:has(.icon){display:inline-flex;align-items:center;justify-content:center;gap:6px}
+/* review fix: no [disabled] treatment existed anywhere — disabled buttons (import confirm, editor
+   ‹пред/след› at the first/last circuit) looked identical to enabled ones and stayed hoverable. */
+button:disabled{opacity:.42;cursor:not-allowed;pointer-events:none}
 :where(input,select,textarea){
   font:inherit; background:var(--panel2); color:var(--txt);
   border:1px solid var(--line); border-radius:var(--r-sm);
@@ -96,111 +117,180 @@ svg{display:block}
 .icon{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .icon-sm{width:14px;height:14px}
 
-/* ===================== top bar ===================== */
-.topbar{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;
-  background:rgba(255,255,255,.9);
-  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
-  position:sticky;top:0;z-index:var(--z-header)}
-.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15.5px;letter-spacing:-.01em;cursor:pointer}
-.brand .bolt{width:22px;height:22px;color:var(--acc)}
-.brand span{color:var(--acc)}
-.badge{margin-left:auto;padding:4px 12px;border-radius:20px;font:600 12px/1 var(--mono);letter-spacing:.02em;
+/* ===================== app shell: sidebar + workspace ===================== */
+.shell{display:flex;min-height:100vh}
+/* design-v2-spec §2.1: sidebar 240px */
+.sidebar{flex:0 0 240px;width:240px;background:var(--sb-bg);color:var(--sb-text);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+/* design-v2-spec §2.1: brand sans 15px/600 */
+.brand-mark{display:flex;align-items:center;gap:9px;padding:18px 16px 14px;font:600 15px var(--sans);letter-spacing:-.01em;color:#fff}
+.brand-mark .bolt{width:20px;height:20px;color:#fff;flex:none}
+.side-nav{display:flex;flex-direction:column;gap:1px;padding:8px 10px;margin-top:4px}
+.side-nav-item{display:flex;align-items:center;gap:10px;background:transparent;color:var(--sb-text);
+  border:none;border-left:3px solid transparent;border-radius:var(--r-sm);padding:9px 10px 9px 8px;
+  font:500 13px var(--sans);text-align:left;transition:background var(--dur) var(--ease),color var(--dur)}
+.side-nav-item .side-ico{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.side-nav-item:hover{background:var(--sb-hover-bg);color:#fff}
+.side-nav-item.active{background:var(--sb-active-bg);color:#fff;border-left-color:var(--burgundy)}
+.side-nav-item.active .side-ico{opacity:1}
+/* one quiet status line (design-v2-spec §2.1): #modeTag + #saveState side by side, no traffic-light
+   dots, 12px. gap (not embedded spaces) separates the two — content:"·" glued straight onto the
+   preceding word otherwise ("активен· сохранено") since flex items don't collapse-space themselves. */
+.side-status{margin-top:auto;padding:12px 16px 16px;border-top:1px solid var(--sb-border);
+  display:flex;align-items:baseline;flex-wrap:wrap;gap:5px;overflow:hidden}
+.side-status .mode{font:500 12px/1.3 var(--mono);color:var(--sb-text-dim);white-space:normal}
+.side-status .save{font:500 12px/1.3 var(--mono);color:var(--sb-text-dim);
+  display:inline;padding:0;border:none;margin-left:0}
+.side-status .save::before{content:"·";margin-right:5px}
+.side-status .save:empty{display:none}
+.side-status .save.saving{color:#C9A667}
+.side-status .save.saved{color:var(--sb-text-dim)}
+.side-status .save.unsaved{color:#D98080}
+
+.workspace{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh}
+
+/* ===================== workspace top bar =====================
+   design-v2-spec §2.3: a thin strip that blends with the page background.
+   #statusBadge is permanently hidden (see index.html) — the per-object status
+   pill (board/circuit/card) is the only status shown now — so this bar carries
+   nothing but the single "← back" crumb on the left. */
+.topbar{display:flex;align-items:center;gap:14px;padding:0 20px;height:38px;flex:0 0 auto;
+  background:var(--paper)}
+.badge{margin-left:auto;padding:3px 11px;border-radius:20px;font:600 11.5px/1 var(--mono);letter-spacing:.02em;
   background:var(--panel2);border:1px solid var(--line);color:var(--dim);white-space:nowrap;
   display:inline-flex;align-items:center;gap:6px}
+/* [hidden] обязан побеждать: .badge{display:inline-flex} перебивает атрибут (design-v2-spec §2.3 —
+   #statusBadge is permanently hidden) — same fix already applied to .toast[hidden]/#screen-editor[hidden] */
+#statusBadge[hidden]{display:none}
 .badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.9}
-.badge.pass{color:var(--ok);border-color:rgba(21,128,61,.4);background:var(--ok-soft)}
-.badge.fail{color:var(--bad);border-color:rgba(220,38,38,.4);background:var(--bad-soft)}
-.badge.review{color:var(--warn);border-color:rgba(180,83,9,.4);background:var(--warn-soft)}
+.badge.pass{color:var(--ok);border-color:rgba(46,125,79,.4);background:var(--ok-soft)}
+.badge.fail{color:var(--bad);border-color:rgba(200,50,31,.4);background:var(--bad-soft)}
+.badge.review{color:var(--warn);border-color:rgba(138,90,22,.4);background:var(--warn-soft)}
 .badge.small{font-size:11px;padding:3px 10px}
-.mode{font:500 11.5px/1 var(--mono);color:var(--faint);white-space:nowrap}
 
-/* ===================== advisory ribbon ===================== */
-.advisory{background:var(--warn-soft);
-  border-bottom:1px solid rgba(180,83,9,.28);color:#8a5a00;
-  font-size:12px;padding:6px 16px;text-align:center;letter-spacing:.005em}
+/* ===================== advisory ribbon (design-v2-spec §2.8: 26px, wash bg, amber text) ===================== */
+.advisory{background:var(--wash);flex:0 0 auto;
+  border-bottom:1px solid var(--line);color:#6B4A12;
+  font-size:11.5px;line-height:26px;padding:0 20px;text-align:center;letter-spacing:.005em}
+.advisory[hidden]{display:none}
 .advisory b{color:var(--amber);font-weight:600}
 
-/* ===================== breadcrumbs / save chip ===================== */
-.crumbs{display:flex;gap:7px;align-items:center;color:var(--dim);font-size:13px;font-weight:500}
-.crumbs a{color:var(--acc);cursor:pointer}
+/* ===================== breadcrumbs (single "← back" element, design-v2-spec §2.2) ===================== */
+.crumbs{display:flex;gap:7px;align-items:center;color:var(--dim);font-size:12.5px;font-weight:500;min-height:16px}
+.crumbs a{color:var(--navy);cursor:pointer}
 .crumbs a:hover{text-decoration:underline}
-.save{margin-left:auto;font:500 11.5px/1 var(--mono);color:var(--faint);
-  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid transparent;transition:color var(--dur),border-color var(--dur)}
-.save::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-.save.saving{color:var(--warn)}
-.save.saved{color:var(--ok)}
-.save.unsaved{color:var(--bad)}
+.mode{font:500 11.5px/1 var(--mono);color:var(--faint);white-space:nowrap}
 
 /* ===================== screens / layout ===================== */
-main{min-height:calc(100vh - 52px - 30px)}
-.screen{padding:22px 24px;max-width:1560px;margin:0 auto}
+main{flex:1;min-height:0;overflow-y:auto}
+.screen{padding:20px 24px;max-width:1560px;margin:0 auto}
 
 /* buttons -------------------------------------------------------------- */
-button.primary{background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);
-  border:none;border-radius:var(--r-sm);padding:8px 14px;font-weight:600;letter-spacing:.01em;
-  box-shadow:0 1px 2px rgba(15,27,51,.12),0 4px 12px -6px rgba(30,64,175,.4);
-  transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),filter var(--dur)}
-button.primary:hover{filter:brightness(1.06)}
-button.primary:active{transform:translateY(1px)}
-button.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
-  padding:7px 12px;font-weight:500;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease),transform var(--dur)}
+button.primary{background:var(--acc);color:var(--acc-ink);
+  border:1px solid var(--acc);border-radius:var(--r-sm);padding:8px 14px;font-weight:600;letter-spacing:.005em;
+  box-shadow:none;transition:background var(--dur) var(--ease),filter var(--dur)}
+button.primary:hover{background:var(--acc-press);border-color:var(--acc-press)}
+button.primary:active{filter:brightness(.95)}
+/* design-v2-spec §1/§4: burgundy is reserved for the ONE main CTA of a screen (dashboard's
+   "+ Новый щит", board's "Нормоконтроль", editor's "Сохранить в щит") — every other .primary
+   button stays navy/interactive. Add .cta to promote a button. */
+button.primary.cta{background:var(--burgundy);border-color:var(--burgundy)}
+button.primary.cta:hover{background:var(--burgundy-press);border-color:var(--burgundy-press)}
+button.ghost{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:7px 12px;font-weight:500;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease)}
 button.ghost:hover{border-color:var(--line-2);background:var(--elev)}
-button.ghost:active{transform:translateY(1px)}
-button.mini{background:var(--panel2);color:var(--acc);border:1px solid var(--line);border-radius:var(--r-sm);
+button.ghost:active{background:var(--panel2)}
+button.mini{background:var(--panel);color:var(--acc);border:1px solid var(--line);border-radius:var(--r-sm);
   padding:3px 9px;font:500 12px var(--mono);transition:border-color var(--dur),background var(--dur)}
 button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .filebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-.filebtn.primary{background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);
-  border:none;border-radius:var(--r-sm);padding:8px 14px;font-weight:600;letter-spacing:.01em;
-  box-shadow:0 1px 2px rgba(15,27,51,.12),0 4px 12px -6px rgba(30,64,175,.4)}
+.filebtn.primary{background:var(--acc);color:var(--acc-ink);
+  border:1px solid var(--acc);border-radius:var(--r-sm);padding:8px 14px;font-weight:600;letter-spacing:.005em}
 /* file-input labels styled as ghost buttons (docs/17 §6) — button.ghost rules don't reach label.filebtn */
-.filebtn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
+.filebtn.ghost{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:var(--r-sm);
   padding:7px 12px;font-weight:500;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease)}
 .filebtn.ghost:hover{border-color:var(--line-2);background:var(--elev)}
 
 /* panels --------------------------------------------------------------- */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:13px 15px;box-shadow:var(--shadow)}
-.panel-h{font:600 11px/1 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.09em;
+/* design-v2-spec §1: panel headers are sans, 12.5px/600, no caps — serif/caps are for screen h1/h2 only */
+.panel-h{font:600 12.5px/1.3 var(--sans);color:var(--dim);text-transform:none;letter-spacing:0;
   display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px}
 
+/* ===================== dropdown / kebab menus (design C) ===================== */
+.menu-wrap,.kebab-wrap{position:relative;display:inline-flex}
+.dropdown-menu,.kebab-menu{position:absolute;top:calc(100% + 4px);right:0;min-width:200px;z-index:var(--z-modal);
+  background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-sm);box-shadow:var(--shadow-lg);
+  padding:4px;display:flex;flex-direction:column;gap:1px}
+.dropdown-menu[hidden],.kebab-menu[hidden]{display:none}
+/* menu rows: plain buttons AND file-input labels (design-v2-spec §2.5 dashboard "Ещё" holds
+   scheduleImportFile/importFile as label.filebtn) render identically — .filebtn.ghost's own border/
+   bg/padding would otherwise win and the two file rows would look like separate boxed buttons. */
+.dropdown-menu button,.kebab-menu button,.dropdown-menu label.filebtn,.kebab-menu label.filebtn{
+  width:100%;text-align:left;background:transparent;border:none;
+  border-radius:var(--r-sm);padding:8px 10px;font:500 13px var(--sans);color:var(--txt);
+  display:flex;align-items:center;gap:8px;transition:background var(--dur)}
+/* [hidden] обязан побеждать: the row rule above sets display:flex at higher specificity than a bare
+   [hidden] — #btnBackDash lives inside #boardMoreMenu and must stay gone (design-v2-spec §2.2) */
+#btnBackDash[hidden]{display:none}
+.dropdown-menu button:hover,.kebab-menu button:hover,
+.dropdown-menu label.filebtn:hover,.kebab-menu label.filebtn:hover{background:var(--panel2)}
+.kebab{background:transparent;border:1px solid transparent;border-radius:var(--r-sm);color:var(--dim);
+  width:26px;height:26px;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;
+  transition:border-color var(--dur),background var(--dur),color var(--dur)}
+.kebab:hover{background:var(--panel2);border-color:var(--line);color:var(--txt)}
+
 /* ===================== DASHBOARD ===================== */
-.dash-head{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
-.dash-head h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em}
+.dash-head{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+/* design-v2-spec §1: screen h1/h2 are serif 26-28px/600 — the one place serif appears besides board names */
+.dash-head h2{margin:0;font:600 27px/1.2 var(--serif);letter-spacing:-.01em;color:var(--ink)}
 .dash-actions{margin-left:auto;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .dash-actions input{width:190px}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
-  padding:16px 17px;cursor:pointer;box-shadow:var(--shadow);position:relative;overflow:hidden;
-  transition:border-color var(--dur) var(--ease),transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
-.card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--acc);opacity:0;transition:opacity var(--dur)}
-.card:hover{border-color:var(--line-2);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
-.card:hover::before{opacity:.85}
-.card h3{margin:0 0 3px;font-size:16px;font-weight:600;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
-.card .cref{font:500 12px var(--mono);color:var(--dim);background:var(--panel2);padding:2px 8px;border-radius:6px;border:1px solid var(--line)}
-.card .chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 2px}
+  padding:15px 16px;cursor:pointer;box-shadow:var(--shadow);position:relative;
+  transition:border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+/* whole-card click without a dedicated "Открыть" button: children stop receiving pointer events
+   (the click always resolves to the div.card that carries data-open) except the kebab menu, which
+   must remain independently clickable — see #projectGrid delegation in app.js. */
+.card *{pointer-events:none}
+.card .kebab-wrap,.card .kebab-wrap *{pointer-events:auto}
+/* no overflow:hidden on .card — it would clip the kebab dropdown; the accent bar rounds its own
+   left corners to match instead */
+.card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;border-radius:var(--r-lg) 0 0 var(--r-lg);background:var(--navy);opacity:0;transition:opacity var(--dur)}
+/* one quiet shadow everywhere on cards (design-v2-spec §1) — hover signals via border + accent bar, not a bigger shadow */
+.card:hover{border-color:var(--line-2)}
+.card:hover::before{opacity:.9}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+/* design-v2-spec §2.5: card title is serif 17px */
+.card h3{margin:0 0 3px;font:600 17px var(--serif);display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.card .cref{font:500 11.5px var(--mono);color:var(--dim);background:var(--panel2);padding:2px 7px;border-radius:var(--r-sm);border:1px solid var(--line)}
+/* design-v2-spec §2.5: one worded status line per card (dot = worst status) replaces the old 4-chip row;
+   .chip/.chips stay defined below — still used by the schedule-import diff rows. */
+.card-status{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);margin:11px 0 2px}
+.card-status .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.card-status.PASS .dot{background:var(--ok)}
+.card-status.NEEDS_REVIEW .dot{background:var(--warn)}
+.card-status.FAIL .dot{background:var(--bad)}
 .chip{font:600 11px var(--mono);padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--dim);
   display:inline-flex;align-items:center;gap:5px}
 .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .chip.n{color:var(--faint)}.chip.n::before{display:none}
-.chip.pass{color:var(--ok);border-color:rgba(21,128,61,.35);background:var(--ok-soft)}
-.chip.fail{color:var(--bad);border-color:rgba(220,38,38,.35);background:var(--bad-soft)}
-.chip.review{color:var(--warn);border-color:rgba(180,83,9,.35);background:var(--warn-soft)}
-.card .cmeta{font-size:12px;color:var(--faint);display:flex;justify-content:space-between;margin-top:12px}
-.card .cact{display:flex;gap:6px;margin-top:13px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line)}
-.card .cact button{font:500 12px var(--sans);padding:4px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--dim);transition:border-color var(--dur),color var(--dur),background var(--dur)}
-.card .cact button:hover{border-color:var(--acc);color:var(--txt);background:var(--elev)}
-.card .cact button[data-del]:hover{border-color:var(--bad);color:var(--bad)}
-.empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:72px 20px;
-  border:1px dashed var(--line-2);border-radius:var(--r-lg);background:rgba(30,64,175,.03);line-height:1.9}
+.chip.pass{color:var(--ok);border-color:rgba(46,125,79,.35);background:var(--ok-soft)}
+.chip.fail{color:var(--bad);border-color:rgba(200,50,31,.35);background:var(--bad-soft)}
+.chip.review{color:var(--warn);border-color:rgba(138,90,22,.35);background:var(--warn-soft)}
+.card .cmeta{font-size:12px;color:var(--faint);display:flex;justify-content:space-between;margin-top:11px}
+.empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:64px 20px;
+  border:1px dashed var(--line-2);border-radius:var(--r-lg);background:var(--panel2);line-height:1.9}
 .empty b{color:var(--txt)}
 
 /* schedule import review --------------------------------------------- */
-.import-review{margin-bottom:18px;border-color:rgba(30,64,175,.35)}
+.import-review{margin-bottom:18px;border-color:var(--line-2)}
 .import-review h3{margin:16px 0 8px;font-size:13px;font-weight:600;color:var(--txt)}
 .import-grid{display:grid;grid-template-columns:minmax(340px,.9fr) minmax(420px,1.1fr);gap:24px}
 .import-issues{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .import-issue{font:500 11px/1.4 var(--mono);padding:5px 8px;border-radius:var(--r-sm);
-  color:var(--warn);background:var(--warn-soft);border:1px solid rgba(180,83,9,.25)}
+  color:var(--warn);background:var(--warn-soft);border:1px solid rgba(138,90,22,.25)}
 .import-table{width:100%;border-collapse:collapse;font-size:12px}
 .import-table th,.import-table td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line)}
 .import-table th{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
@@ -216,50 +306,75 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .import-diff-row.not_checked{border-left:3px solid var(--warn);background:var(--warn-soft)}
 .import-diff-row.match{border-left:3px solid var(--ok);background:var(--ok-soft)}
 .import-confirm{display:flex;align-items:flex-start;gap:8px;margin:14px 0;padding:12px 14px;
-  color:#8a5a00;background:var(--warn-soft);border:1px solid rgba(180,83,9,.4);border-radius:var(--r-sm);font-size:12px}
+  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(138,90,22,.4);border-radius:var(--r-sm);font-size:12px}
 .import-confirm input{width:auto;margin-top:2px}.import-actions{display:flex;gap:9px;justify-content:flex-end}
 @media(max-width:900px){.import-grid{grid-template-columns:1fr}}
 
 /* ===================== BOARD / SCHEDULE ===================== */
 .board-head{display:flex;gap:18px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
-.board-name{font-size:22px;font-weight:600;letter-spacing:-.02em;background:transparent;border:1px solid transparent;
-  border-radius:var(--r-sm);padding:3px 8px;margin-left:-8px;width:100%;transition:border-color var(--dur),background var(--dur)}
+/* anchors the meta popover (design-v2-spec §2.4) below the metadata line */
+.board-id{position:relative;flex:1;min-width:280px}
+.board-title-row{display:flex;align-items:center;gap:10px}
+/* design-v2-spec §1: board names are serif, like screen titles */
+.board-name{flex:1;min-width:0;font:600 20px var(--serif);letter-spacing:-.01em;background:transparent;border:1px solid transparent;
+  border-radius:var(--r-sm);padding:3px 8px;margin-left:-8px;transition:border-color var(--dur),background var(--dur)}
 .board-name:hover{border-color:var(--line);background:var(--panel2)}
 .board-name:focus{border-color:var(--acc);background:var(--panel2);box-shadow:var(--ring)}
-.board-sub{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-.board-sub input{width:150px;font:500 12.5px var(--mono)}
-.board-sub .supply{color:var(--dim);font:500 12px var(--mono);background:var(--panel2);padding:5px 10px;border-radius:20px;border:1px solid var(--line)}
-.board-sub select#b_pack{width:150px;font:500 12.5px var(--mono)}
+/* design-v2-spec §2.4: one quiet metadata line ("DB-1 · Эл.щитовая · 400 В · 3ф · TN-C-S · 12 мест ·
+   IEC 60364 (демо)"); click opens the popover below holding the actual b_ref/b_location/b_pack inputs. */
+.board-meta-line{display:inline-flex;align-items:center;gap:5px;margin-top:5px;margin-left:-7px;padding:3px 7px;
+  max-width:100%;overflow:hidden;background:transparent;border:1px solid transparent;border-radius:var(--r-sm);
+  font:500 12.5px var(--mono);color:var(--dim);transition:border-color var(--dur),background var(--dur),color var(--dur)}
+.board-meta-line:hover{border-color:var(--line);background:var(--panel2);color:var(--txt)}
+.board-meta-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-meta-line .icon{color:var(--faint);flex:none}
+.board-meta-popover{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-modal);
+  min-width:400px;max-width:min(540px,90vw);background:var(--panel);border:1px solid var(--line-2);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-lg);padding:13px 15px}
+/* [hidden] обязан побеждать: не задаём display в правиле выше, но фиксируем явно — та же категория
+   бага, что уже чинилась для .toast/#statusBadge/#btnBackDash в этом файле */
+.board-meta-popover[hidden]{display:none}
+.bmp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;
+  font:600 12.5px var(--sans);color:var(--dim)}
+.bmp-head button{padding:4px 10px}
+.bmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 12px}
+.bmp-field{display:flex;flex-direction:column;gap:4px;font:600 10px var(--sans);color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+.bmp-field input,.bmp-field select{font:500 12.5px var(--mono);text-transform:none;letter-spacing:0}
+.bmp-row{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.supply{color:var(--dim);font:500 12px var(--mono);background:var(--panel2);padding:5px 10px;border-radius:20px;border:1px solid var(--line)}
 .board-actions{margin-left:auto;display:flex;gap:9px;align-items:center;flex-shrink:0;flex-wrap:wrap}
 
 .shared-head{display:flex;justify-content:space-between;gap:22px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
 .shared-head h2{margin:9px 0 4px}.shared-warning{max-width:560px;margin:0;padding:10px 12px;
-  color:#8a5a00;background:var(--warn-soft);border:1px solid rgba(180,83,9,.4);
+  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(138,90,22,.4);
   border-radius:var(--r);font-size:12px;line-height:1.55}
 #screen-shared .schedule tbody tr{cursor:default}
 
-.sched-wrap{overflow:auto;max-height:calc(100vh - 250px);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);background:var(--panel)}
-table.schedule{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;min-width:1060px}
-table.schedule th{text-align:left;padding:11px 12px;background:var(--panel2);color:var(--dim);
+.sched-wrap{overflow:auto;max-height:58vh;border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);background:var(--panel)}
+/* design-v2-spec §1: table body 13.5px */
+table.schedule{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:1060px}
+table.schedule th{text-align:left;padding:10px 12px;background:var(--thead-bg);color:var(--dim);
   font:600 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.06em;
   position:sticky;top:0;z-index:var(--z-sticky);border-bottom:1px solid var(--line-2);white-space:nowrap}
 /* text-transform:uppercase turns "cos φ" into "COSΦ" — this header keeps its own casing */
 table.schedule th.no-caps{text-transform:none}
-table.schedule td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.schedule th.num{text-align:right}
+table.schedule td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
 table.schedule tbody tr{transition:background var(--dur)}
 table.schedule tbody tr:hover td{background:var(--panel2)}
 table.schedule tbody tr:last-child td{border-bottom:none}
 table.schedule tbody tr{cursor:pointer}
 table.schedule .mono{font-family:var(--mono);font-weight:500}
+table.schedule td.num{font-family:var(--mono);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
 table.schedule tr.spare td{color:var(--faint);font-style:italic}
-.st-cell{font:600 12px var(--mono);display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;border:1px solid transparent;white-space:nowrap}
+.st-cell{font:600 11px var(--mono);display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:var(--r-sm);border:1px solid transparent;white-space:nowrap}
 .st-cell::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-.st-cell.PASS{color:var(--ok);background:var(--ok-soft);border-color:rgba(21,128,61,.3)}
-.st-cell.FAIL{color:var(--bad);background:var(--bad-soft);border-color:rgba(220,38,38,.3)}
-.st-cell.NEEDS_REVIEW{color:var(--warn);background:var(--warn-soft);border-color:rgba(180,83,9,.3)}
+.st-cell.PASS{color:var(--ok);background:var(--ok-soft);border-color:rgba(46,125,79,.3)}
+.st-cell.FAIL{color:var(--bad);background:var(--bad-soft);border-color:rgba(200,50,31,.3)}
+.st-cell.NEEDS_REVIEW{color:var(--warn);background:var(--warn-soft);border-color:rgba(138,90,22,.3)}
 .rowact{display:flex;gap:5px}
-.rowact button{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--dim);
-  padding:4px;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;transition:border-color var(--dur),color var(--dur),background var(--dur)}
+.rowact button{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--dim);
+  padding:4px;display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;transition:border-color var(--dur),color var(--dur),background var(--dur)}
 .rowact button:hover{border-color:var(--acc);color:var(--txt);background:var(--elev)}
 .rowact button[data-delc]:hover{border-color:var(--bad);color:var(--bad)}
 .mono{font-family:var(--mono)}
@@ -268,13 +383,21 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .quickadd input{flex:1;min-width:260px}
 .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:4px}
 .totbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--shadow)}
-.totbox h4{margin:0 0 8px;font:600 11px/1.3 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.07em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.totbox .big{font:600 24px/1.1 var(--mono);color:var(--txt);letter-spacing:-.01em}
+/* review fix: was 11px/uppercase/.07em, out of step with the .panel-h pattern (design-v2-spec §1:
+   panel headers 12.5px/600 sans, no caps) that every other panel title in the app already follows */
+.totbox h4{margin:0 0 8px;font:600 12.5px/1.3 var(--sans);color:var(--dim);text-transform:none;letter-spacing:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+/* design-v2-spec §1: burgundy marks key figures in totals */
+.totbox .big{font:600 24px/1.1 var(--mono);color:var(--burgundy);letter-spacing:-.01em}
 .totbox .big+div{color:var(--dim);font-size:12px;margin-top:3px}
 .totbox .warn{color:var(--warn)}
-.phbar{display:flex;gap:8px;align-items:flex-end;height:56px;margin:14px 0 24px;padding-top:4px}
-.phbar .b{flex:1;background:linear-gradient(180deg,var(--acc),var(--acc-2));border-radius:5px 5px 2px 2px;min-height:4px;position:relative}
-.phbar .b span{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:500 11px/1.25 var(--mono);color:var(--dim)}
+/* review fix: the two-line L1/L2/L3 + amps label sat only 21px below the bar (.b span bottom:-21px)
+   while a two-line 11px/1.25 label needs ~28px — it crept up onto the bar itself, and the box's
+   own 24px bottom margin left no clearance before the next line ("перекос …") below it. Bumped
+   both the label offset and the box's bottom margin so the label clears the bar and has its own
+   quiet strip beneath it. */
+.phbar{display:flex;gap:8px;align-items:flex-end;height:56px;margin:14px 0 40px;padding-top:4px}
+.phbar .b{flex:1;background:var(--acc);border-radius:2px 2px 0 0;min-height:4px;position:relative}
+.phbar .b span{position:absolute;top:100%;margin-top:6px;left:0;right:0;text-align:center;font:500 11px/1.25 var(--mono);color:var(--dim)}
 
 /* normcheck ----------------------------------------------------------- */
 .norm-panel{margin-top:16px}
@@ -294,10 +417,21 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .norm-card.info .norm-sev{color:var(--acc)}
 .norm-card.not-checked .norm-sev{color:var(--faint)}
 .norm-main h4{margin:0 0 4px;font-size:13px}.norm-main p{margin:0;color:var(--dim);font-size:12px;line-height:1.5}
-.norm-values{margin-top:5px;font:500 11px/1.45 var(--mono);color:var(--faint);overflow-wrap:anywhere}
-.norm-cite{margin-top:4px;color:var(--faint);font-size:10.5px}
+/* review fix: --faint is 3.08:1 on white — fine for decoration, not for text that carries meaning
+   (факт/требуется values, citation + source-trust line, the identity footer). Raised to --dim
+   (5.9-6:1 on card) here; --faint stays for genuinely decorative uses elsewhere (dots, chevrons). */
+.norm-values{margin-top:5px;font:500 11px/1.45 var(--mono);color:var(--dim);overflow-wrap:anywhere}
+.norm-cite{margin-top:4px;color:var(--dim);font-size:10.5px}
 .norm-open{white-space:nowrap;padding:5px 9px;font-size:11px}
-.norm-identity{padding:0 12px 12px;color:var(--faint);font-size:10.5px;line-height:1.55}
+.norm-identity{padding:0 12px 12px;color:var(--dim);font-size:10.5px;line-height:1.55}
+/* review fix: collapsed provenance-dump <details> (renderNormcheck splitProvenanceDetail) —
+   styled like the .step audit-trace tokens it's meant to echo */
+.norm-detail-more{margin-top:5px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel2);overflow:hidden}
+.norm-detail-more summary{padding:5px 9px;cursor:pointer;font:600 11px var(--sans);color:var(--dim);list-style:none;user-select:none}
+.norm-detail-more summary::-webkit-details-marker{display:none}
+.norm-detail-more summary:hover{color:var(--txt)}
+.norm-detail-more[open] summary{border-bottom:1px solid var(--line)}
+.norm-detail-more .body{padding:6px 9px;font:500 11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere}
 .norm-marker{display:inline-flex;margin-left:5px;padding:1px 5px;border-radius:10px;font:700 9px var(--mono);vertical-align:middle}
 .norm-marker.error{color:var(--bad);background:var(--bad-soft)}
 .norm-marker.warning{color:var(--warn);background:var(--warn-soft)}
@@ -309,19 +443,20 @@ table.schedule tr.norm-info td:first-child{box-shadow:inset 3px 0 var(--acc)}
 table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)}
 
 /* ===================== EDITOR ===================== */
-.editor-bar{display:flex;align-items:center;gap:12px;padding:9px 18px;
-  background:rgba(255,255,255,.9);border-bottom:1px solid var(--line);
-  backdrop-filter:blur(8px);
-  position:sticky;top:52px;z-index:var(--z-sticky)}
+.editor-bar{display:flex;align-items:center;gap:12px;padding:9px 18px;flex:0 0 auto;
+  background:var(--panel);border-bottom:1px solid var(--line)}
 .ed-nav{display:flex;align-items:center;gap:8px;color:var(--dim);font:600 13px var(--mono)}
-.ed-nav #edRef{padding:2px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--txt)}
+.ed-nav #edRef{padding:2px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt)}
 .ed-right{margin-left:auto;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 
-#screen-editor{padding:0}  /* editor-bar + .grid carry their own padding; avoids viewport overflow */
-.grid{display:grid;grid-template-columns:312px 1fr 352px;gap:14px;padding:14px 18px;height:calc(100vh - 52px - 30px - 56px)}
-.col{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;padding-right:2px}
-/* was overflow:hidden — on short viewports it clipped .artifact instead of letting the column scroll */
-.center{overflow:auto}
+#screen-editor{padding:0;height:100%;display:flex;flex-direction:column;min-height:0}  /* editor-bar + .grid carry their own padding; fills the workspace column */
+#screen-editor[hidden]{display:none}  /* [hidden] обязан побеждать: display:flex выше иначе перебивает атрибут (см. .toast[hidden]) */
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:312px 1fr 352px;gap:14px;padding:14px 18px}
+/* review fix: grid items default to min-width:auto, so the center track refused to shrink below
+   the nowrap .tabs row's content width and pushed into the right column (#paneCopilot) at 1280px —
+   min-width:0 lets the 1fr track actually shrink to its grid cell */
+.col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0;overflow:auto;padding-right:2px}
+.center{overflow:auto;min-width:0}
 
 /* form ---------------------------------------------------------------- */
 .form{display:flex;flex-direction:column;gap:16px}
@@ -333,49 +468,71 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* fieldset groups (docs/17 §5): no default box — thin top rule + panel-h legend */
 .fgroup{display:flex;flex-direction:column;gap:9px;border:0;border-top:1px solid var(--line);
   margin:0;padding:14px 0 0;min-width:0;min-inline-size:0}
+/* review fix: was 11px/uppercase/.08em — design-v2-spec §1 bans caps on panel-level headers (see
+   .panel-h) and these fieldset legends (НАГРУЗКА, КАБЕЛЬ И ПРОКЛАДКА…) are exactly that pattern */
 .fgroup>legend{display:block;width:100%;float:none;padding:0;margin:0;
-  font:600 11px/1 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.09em}
+  font:600 12.5px/1.3 var(--sans);color:var(--dim);text-transform:none;letter-spacing:0}
 
 /* summary bar --------------------------------------------------------- */
 .summary{display:flex;flex-wrap:wrap;gap:10px 8px;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow)}
 .summary .kv{font-size:12px;display:flex;flex-direction:column;gap:3px;padding:2px 15px 2px 0;margin-right:3px;border-right:1px solid var(--line);flex:0 1 auto}
 .summary .kv:last-child{border-right:none;padding-right:0;margin-right:0}
-.summary .kv span{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;white-space:nowrap}
+/* review fix: was 10.5px/uppercase/.05em — same no-caps rule as .panel-h/.fgroup>legend (design-v2-spec §1) */
+.summary .kv span{color:var(--dim);font-size:12.5px;text-transform:none;letter-spacing:0;font-weight:600;white-space:nowrap}
 .summary .kv b{color:var(--txt);font:600 14.5px var(--mono);letter-spacing:-.01em;white-space:nowrap}
+/* design-v2-spec §2.6: "Определяет:" is the one governing-constraint value worth calling out
+   in an otherwise quiet key-value strip — burgundy, like other key figures (design-v2-spec §1). */
+.summary .kv.kv-strong span{color:var(--burgundy)}
+.summary .kv.kv-strong b{color:var(--burgundy)}
 
 /* tabs + artifact ----------------------------------------------------- */
-.tabs{display:flex;gap:3px;margin-top:2px;border-bottom:1px solid var(--line);padding:0 2px}
+/* review fix: flex-wrap:nowrap (the implicit default) let the 5 chart tabs overflow their own
+   column and overlap the right-hand Копилот/Обоснование panel at 1280×720 — wrap instead */
+.tabs{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;border-bottom:1px solid var(--line);padding:0 2px}
 .tabs button{background:transparent;color:var(--dim);border:none;border-radius:var(--r-sm) var(--r-sm) 0 0;
   padding:9px 14px;font:500 13px var(--sans);position:relative;transition:color var(--dur),background var(--dur)}
 .tabs button:hover{color:var(--txt);background:var(--panel2)}
 .tabs button.active{color:var(--acc)}
-.tabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--acc);border-radius:2px 2px 0 0}
+.tabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--acc);border-radius:0}
 .artifact{flex:1;background:var(--panel);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);padding:8px;min-height:340px;box-shadow:var(--shadow)}
 .plot{width:100%;height:100%}
 .artifact .tabpane{height:100%}
 .prov{font-size:11px;color:var(--warn);margin-top:9px;padding:8px 12px;background:var(--warn-soft);
-  border:1px solid rgba(180,83,9,.28);border-radius:var(--r);line-height:1.55}
+  border:1px solid rgba(138,90,22,.28);border-radius:var(--r);line-height:1.55}
 .disclaimer{font-size:11px;color:var(--faint);margin-top:8px;line-height:1.6}
 
 /* copilot ------------------------------------------------------------- */
 .copilot{display:flex;flex-direction:column}
+/* design-v2-spec §2.6: "Копилот"/"Обоснование расчёта" tabs of one panel. Deliberately its own
+   selectors (not .tabs/.tabs button/.tabs button.active) — those are queried document-wide by the
+   center chart tabs' click handler (see app.js), so reusing the class would let a center-tab click
+   strip this panel's "active" underline. Visually mirrors .tabs, bled to the panel edges. */
+.rtabs{display:flex;gap:3px;margin:-13px -15px 12px;padding:0 13px;border-bottom:1px solid var(--line)}
+.rtabs button{background:transparent;color:var(--dim);border:none;border-radius:var(--r-sm) var(--r-sm) 0 0;
+  padding:9px 12px;font:500 13px var(--sans);position:relative;transition:color var(--dur),background var(--dur)}
+.rtabs button:hover{color:var(--txt);background:var(--panel2)}
+.rtabs button.active{color:var(--acc)}
+.rtabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--acc)}
+.rpane[hidden]{display:none}
 .chat{flex:1;overflow:auto;display:flex;flex-direction:column;gap:9px;max-height:240px;min-height:120px;padding:2px}
-.msg{padding:9px 12px;border-radius:var(--r-lg);font-size:13px;line-height:1.5;max-width:92%;position:relative;
-  animation:msg-in .22s var(--ease)}
-.msg.user{align-self:flex-end;background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);border-bottom-right-radius:4px;font-weight:500}
-.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:4px}
-.msg.rev{align-self:flex-start;background:var(--ok-soft);border:1px solid rgba(21,128,61,.35);border-bottom-left-radius:4px}
-.msg.rev.bad{background:var(--bad-soft);border-color:rgba(220,38,38,.4)}
+.msg{padding:9px 12px;border-radius:var(--r);font-size:13px;line-height:1.5;max-width:92%;position:relative}
+.msg.user{align-self:flex-end;background:var(--acc);color:var(--acc-ink);font-weight:500}
+.msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+/* review fix: Copilot failures (network/HTTP errors, unfinished requests, failed provenance
+   checks) were rendered as plain .msg.bot — visually identical to a normal answer. Mirrors the
+   existing .msg.rev.bad treatment so a failure reads as a failure at a glance. */
+.msg.bot.error{background:var(--bad-soft);border-color:rgba(200,50,31,.35);color:var(--bad)}
+.msg.rev{align-self:flex-start;background:var(--ok-soft);border:1px solid rgba(46,125,79,.35)}
+.msg.rev.bad{background:var(--bad-soft);border-color:rgba(200,50,31,.4)}
 .msg b{font-weight:600}
 .msg small{color:var(--dim);display:block;margin-top:5px;font:500 10.5px/1.4 var(--mono);opacity:.85}
 .msg.user small{color:rgba(255,255,255,.75)}
-@keyframes msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .chatbar{display:flex;gap:7px;margin:10px 0 8px}
 .chatbar textarea{resize:vertical;min-height:44px}
 .chatbar button{align-self:stretch;width:46px;display:flex;align-items:center;justify-content:center;padding:0}
 .chatbar button .icon{width:18px;height:18px}
-.board-copilot{margin-top:14px}.board-chat{max-height:220px;min-height:70px}.proposal{margin-top:12px}.proposal-board{padding:12px;border:1px solid var(--line);border-radius:8px;display:flex;gap:10px;flex-wrap:wrap}
+.board-copilot{margin-top:14px}.board-chat{max-height:220px;min-height:70px}.proposal{margin-top:12px}.proposal-board{padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);display:flex;gap:10px;flex-wrap:wrap}
 .board-copilot .chatbar button{width:auto;padding:0 16px}
 
 /* audit trace --------------------------------------------------------- */
@@ -391,9 +548,9 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
   transform:rotate(45deg);transition:transform var(--dur) var(--ease);flex:none}
 .step[open] summary::after{transform:rotate(225deg)}
 .step .body{padding:2px 11px 11px 30px;font-size:12px}
-.step .body .f{font:500 12px var(--mono);color:var(--acc);background:var(--acc-soft);padding:6px 9px;border-radius:6px;margin:2px 0;overflow-x:auto}
+.step .body .f{font:500 12px var(--mono);color:var(--acc);background:var(--acc-soft);padding:6px 9px;border-radius:var(--r-sm);margin:2px 0;overflow-x:auto}
 .step .body .comp{font:500 12px var(--mono);color:var(--txt);margin:5px 0}
-.step .cite{color:var(--dim);font-size:11px;margin-top:5px;padding:3px 8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;display:inline-block}
+.step .cite{color:var(--dim);font-size:11px;margin-top:5px;padding:3px 8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-sm);display:inline-block}
 .st-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 .st-pass{background:var(--ok);color:var(--ok)}
 .st-fail{background:var(--bad);color:var(--bad)}
@@ -406,26 +563,36 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* toast --------------------------------------------------------------- */
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--panel);
   border:1px solid var(--line-2);border-radius:var(--r-lg);padding:11px 16px;box-shadow:var(--shadow-lg);
-  z-index:var(--z-toast);display:flex;gap:14px;align-items:center;font-size:13px;
-  animation:toast-in .24s var(--ease)}
+  z-index:var(--z-toast);display:flex;gap:14px;align-items:center;font-size:13px}
 /* [hidden] обязан побеждать: .toast{display:flex} перебивает атрибут — иначе пустая капсула висит всегда */
 .toast[hidden]{display:none}
-@keyframes toast-in{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
-.toast button{background:linear-gradient(180deg,var(--acc),var(--acc-press));color:var(--acc-ink);border:none;border-radius:var(--r-sm);padding:5px 12px;font-weight:600}
+.toast button{background:var(--acc);color:var(--acc-ink);border:1px solid var(--acc);border-radius:var(--r-sm);padding:5px 12px;font-weight:600}
 
 /* skeleton shimmer utility ------------------------------------------- */
 .skeleton{position:relative;overflow:hidden;background:var(--panel2);border-radius:var(--r-sm)}
 .skeleton::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
-  background:linear-gradient(90deg,transparent,rgba(15,27,51,.05),transparent);animation:shimmer 1.4s infinite}
+  background:linear-gradient(90deg,transparent,rgba(18,22,25,.05),transparent);animation:shimmer 1.4s infinite}
 @keyframes shimmer{100%{transform:translateX(100%)}}
 
 /* ===================== responsive ===================== */
 @media(max-width:1180px){
   .grid{grid-template-columns:1fr;height:auto}
+  #screen-editor{height:auto;overflow:visible}
   .col{overflow:visible}
   .center{overflow:visible}
   .artifact{height:440px}
   .chat{max-height:320px}
+}
+@media(max-width:900px){
+  .shell{flex-direction:column}
+  .sidebar{position:static;flex:0 0 auto;width:100%;height:auto;flex-direction:row;align-items:center;overflow:visible}
+  .brand-mark{padding:10px 14px}
+  .side-nav{flex-direction:row;margin-top:0;padding:8px}
+  .side-nav-item{border-left:none;border-bottom:3px solid transparent}
+  .side-nav-item.active{border-left-color:transparent;border-bottom-color:var(--burgundy)}
+  .side-status{margin-top:0;margin-left:auto;border-top:none;flex-direction:row;align-items:center;gap:14px;padding:10px 14px}
+  .workspace{height:auto}
+  main{overflow-y:visible}
 }
 @media(max-width:640px){
   .screen{padding:16px 14px}
@@ -454,7 +621,10 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .print-actions{display:flex;gap:10px;margin-bottom:14px}
 @media print{
   body{background:#fff}
-  .topbar,.advisory,#crumbs,.no-print{display:none!important}
+  .sidebar,.topbar,.advisory,#crumbs,.no-print{display:none!important}
+  .shell{display:block}
+  .workspace{height:auto;display:block}
+  main{overflow:visible}
   .screen{padding:0}
   .print-root{max-width:none;padding:0;border-radius:0}
   .print-root .print-sld{border:none}
@@ -467,86 +637,96 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 }
 
 /* ============ norm library (docs/20 §10) ============ */
-.nlib-topnav { margin-left: auto; }
+.nlib-topnav { margin-left: 0; }
 .nlib-layout { display: grid; grid-template-columns: 232px 268px minmax(0, 1fr); gap: 18px; align-items: start; }
 /* когда #normToc скрыт (поиск / пусто), .nlib-main без этого правила авто-занимает узкий трек 268px
    вместо оставшихся 2/3 экрана — toc идёт прямо перед .nlib-main в разметке */
 .nlib-toc[hidden] + .nlib-main { grid-column: 2 / -1; }
-.nlib-side h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim, #667); }
+.nlib-side h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
 .nlib-doc-list { display: flex; flex-direction: column; gap: 6px; }
-.nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid #dde3ec; border-radius: 8px; background: #fff; cursor: pointer; }
-.nlib-doc:hover { border-color: #9fb3d0; }
-.nlib-doc.active { border-color: #3b6ea8; box-shadow: inset 3px 0 0 #3b6ea8; }
+.nlib-doc { text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card); cursor: pointer; }
+.nlib-doc:hover { border-color: var(--line-2); }
+/* design-v2-spec §2.7: active document gets a burgundy stripe, like the sidebar's active nav item */
+.nlib-doc.active { border-color: var(--burgundy); box-shadow: inset 3px 0 0 var(--burgundy); }
 .nlib-doc .t { font-weight: 500; line-height: 1.3; }
-.nlib-doc .m { font-size: 12px; color: #667; margin-top: 4px; }
+.nlib-doc .m { font-size: 12px; color: var(--dim); margin-top: 4px; }
 .nlib-status { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid; }
-.nlib-status.in_force { color: #1c6b3c; border-color: #a9d8bd; background: #eef8f2; }
-.nlib-status.repealed { color: #8a2020; border-color: #e2b1b1; background: #fdf0f0; }
-.nlib-status.unknown { color: #7a5a00; border-color: #e0cf9a; background: #fdf7e6; }
+/* design-v2-spec §2.7: "действует" is an ok-pilyulya, matching .badge.pass/.chip.pass elsewhere */
+.nlib-status.in_force { color: var(--ok); border-color: rgba(46,125,79,.4); background: var(--ok-soft); }
+.nlib-status.repealed { color: var(--bad); border-color: rgba(200,50,31,.4); background: var(--bad-soft); }
+.nlib-status.unknown { color: var(--warn); border-color: rgba(138,90,22,.4); background: var(--warn-soft); }
 /* §8.4: у отменённого документа сноска об утрате силы видна везде, где показан его текст */
-.nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #c05a5a; background: #fdf0f0; font-size: 13px; }
-.nlib-hit { border: 1px solid #dde3ec; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: #fff; }
-.nlib-hit:hover { border-color: #9fb3d0; }
-.nlib-hit .crumb { font-size: 12px; color: #667; }
-.nlib-hit mark { background: #fff3b0; padding: 0 1px; }
+.nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); font-size: 13px; }
+.nlib-hit { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: var(--card); }
+.nlib-hit:hover { border-color: var(--line-2); }
+.nlib-hit .crumb { font-size: 12px; color: var(--dim); }
+/* highlighter tint tied to --warn (amber family) rather than a stray yellow literal */
+.nlib-hit mark { background: rgba(138,90,22,.22); padding: 0 1px; }
 .nlib-body p { margin: 0 0 10px; line-height: 1.55; }
 /* §10.4: секции с таблицами — моноширинно, горизонтальный скролл внутри блока */
-.nlib-body pre.nlib-table { font-family: 'Fira Code', ui-monospace, monospace; font-size: 12px;
-  background: #f7f9fc; border: 1px solid #e3e9f2; border-radius: 8px; padding: 10px;
+.nlib-body pre.nlib-table { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
+  background: var(--wash); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px;
   overflow-x: auto; white-space: pre; margin: 0 0 10px; }
 .nlib-nav { display: flex; gap: 8px; margin-top: 12px; }
 /* [hidden] обязан побеждать: display у класса иначе перекрывает атрибут (панель висела открытой) */
 .nlib-panel[hidden], .nlib-results[hidden], .nlib-toc[hidden], .nlib-reader[hidden] { display: none; }
+/* right-edge drawer: needs a shadow cast toward its left edge (away from the page), not the
+   generic downward --shadow-lg — otherwise it stops reading as a layer above the page content */
 .nlib-panel { position: fixed; top: 0; right: 0; width: min(520px, 92vw); height: 100vh;
-  background: #fff; border-left: 1px solid #dde3ec; box-shadow: -8px 0 24px rgba(20,30,50,.12);
+  background: var(--card); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(28,37,54,.14);
   z-index: 60; display: flex; flex-direction: column; }
-.nlib-panel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #e6ebf3; }
+.nlib-panel-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .nlib-panel-title { font-weight: 500; flex: 1; font-size: 14px; }
-.nlib-panel-src { font-size: 12px; white-space: nowrap; }
+.nlib-panel-src { font-size: 12px; white-space: nowrap; color: var(--navy); }
 .nlib-panel-body { padding: 14px; overflow-y: auto; flex: 1; }
-.nlib-cite-open { font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid #b9cbe2;
-  border-radius: 5px; background: #f2f7fd; color: #24527f; cursor: pointer; }
-.nlib-cite-open:hover { border-color: #3b6ea8; }
+.nlib-cite-open { font-size: 11px; padding: 1px 6px; margin-left: 6px; border: 1px solid rgba(36,64,122,.3);
+  border-radius: var(--r-sm); background: var(--navy-soft); color: var(--navy); cursor: pointer; }
+.nlib-cite-open:hover { border-color: var(--navy); }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; } }
 
 /* --- читалка: сплошной текст, как в первоисточнике --- */
-.nlib-doc-head { padding-bottom: 10px; border-bottom: 1px solid #e6ebf3; margin-bottom: 10px; }
+.nlib-doc-head { padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 .nlib-doc-head h3 { margin: 0 0 6px; font-size: 15px; line-height: 1.35; }
-.nlib-doc-meta { font-size: 12px; color: #667; }
+.nlib-doc-meta { font-size: 12px; color: var(--dim); }
 /* Блочный поток, а не flex-колонка: во flex с ограниченной высотой 349 пунктов оглавления
    сжимались до 10 px каждый и превращались в нечитаемую кашу. */
-.nlib-outline { max-height: calc(100vh - 260px); overflow-y: auto; display: block; }
-.nlib-outline-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 5px;
-  padding: 5px 8px; font-size: 12.5px; line-height: 1.35; color: #2c3a4d; cursor: pointer;
+.nlib-outline { max-height: calc(100vh - 220px); overflow-y: auto; display: block; }
+.nlib-outline-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--r-sm);
+  padding: 5px 8px; font-size: 12.5px; line-height: 1.35; color: var(--ink); cursor: pointer;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nlib-outline-item:hover { background: #eef3fa; color: #24527f; }
+.nlib-outline-item:hover { background: var(--wash); color: var(--navy); }
 .nlib-outline-item.d0 { font-weight: 600; margin-top: 8px; }
 .nlib-outline-item.d1 { padding-left: 14px; }
-.nlib-outline-item.d2 { padding-left: 26px; color: #5b6b80; font-size: 12px; }
+.nlib-outline-item.d2 { padding-left: 26px; color: var(--dim); font-size: 12px; }
 /* Колонка чтения: ограниченная мера строки — длинные нормы читают глазами, а не сканируют. */
-.nlib-reader { max-height: calc(100vh - 210px); overflow-y: auto; padding-right: 6px; }
-.nlib-text { max-width: 68ch; font-size: 15px; line-height: 1.62; color: #1c2533; }
+.nlib-reader { max-height: calc(100vh - 172px); overflow-y: auto; padding-right: 6px; }
+.nlib-text { max-width: 68ch; font-size: 15px; line-height: 1.62; color: var(--ink); }
 .nlib-text h2.nlib-h { font-size: 18px; margin: 26px 0 10px; padding-bottom: 6px;
-  border-bottom: 1px solid #e6ebf3; }
-.nlib-text h3.nlib-h { font-size: 16px; margin: 22px 0 8px; color: #24527f; }
-.nlib-text h4.nlib-h { font-size: 14px; margin: 16px 0 6px; color: #46586f; }
+  border-bottom: 1px solid var(--line); }
+.nlib-text h3.nlib-h { font-size: 16px; margin: 22px 0 8px; color: var(--navy); }
+.nlib-text h4.nlib-h { font-size: 14px; margin: 16px 0 6px; color: var(--dim); }
 .nlib-clause { position: relative; margin: 0 0 12px; }
 .nlib-clause p { margin: 0 0 8px; }
-/* Якорь — адрес пункта, а не часть нормы: мелко, на поле, проявляется при наведении. */
+/* Якорь — адрес пункта, а не часть нормы: мелко, на поле, проявляется при наведении.
+   review fix: --faint measured 2.93-3.08:1 here — raised to --dim (still the quietest text color
+   available that clears 4.5:1) since it's still real, readable text once revealed on hover. */
 .nlib-anchor-link { position: absolute; left: -64px; top: 3px; width: 56px; text-align: right;
-  font-family: 'Fira Code', ui-monospace, monospace; font-size: 10px; color: #b3bdcc;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: var(--dim);
   text-decoration: none; opacity: 0; transition: opacity .12s; }
 .nlib-clause:hover .nlib-anchor-link { opacity: 1; }
-.nlib-anchor-link:hover { color: #3b6ea8; }
-/* Подсветка места перехода гаснет сама: она показывает «ты здесь», а не выделяет текст. */
-.nlib-focus { border-radius: 4px; animation: nlib-fade 2.8s ease-out forwards; }
+.nlib-anchor-link:hover { color: var(--navy); }
+/* Подсветка места перехода гаснет сама: она показывает «ты здесь», а не выделяет текст.
+   Tied to --warn (amber family), like .nlib-hit mark, instead of a stray yellow literal. */
+.nlib-focus { border-radius: var(--r-sm); animation: nlib-fade 2.8s ease-out forwards; }
 @keyframes nlib-fade {
-  0%, 45% { background: #fff3c4; box-shadow: 0 0 0 6px #fff3c4; }
+  0%, 45% { background: rgba(138,90,22,.24); box-shadow: 0 0 0 6px rgba(138,90,22,.24); }
   100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
 }
 .nlib-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 20px; padding-top: 12px; border-top: 1px solid #e6ebf3; font-size: 12px; }
-@media (max-width: 1200px) { .nlib-anchor-link { position: static; opacity: .55; width: auto;
+  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+@media (max-width: 1200px) { /* review fix: was opacity:.55 — ~2.3:1 on white where this is always
+  visible (not hover-revealed like above); full opacity keeps the same --dim color readable */
+  .nlib-anchor-link { position: static; opacity: 1; width: auto;
   display: block; text-align: left; margin-bottom: 2px; } }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; }
   .nlib-outline, .nlib-reader { max-height: none; }

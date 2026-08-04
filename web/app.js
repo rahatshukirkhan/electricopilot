@@ -32,7 +32,12 @@ const deviceText = (s) => String(s ?? '').replace(/gG_fuse/g, 'Предохра�
 // Provenance/disclaimer strings are server-generated Russian prose that lists untrusted sections and
 // origin/status codes by their raw code — translate just those tokens for display (server text is
 // not otherwise rewritten).
-const humanizeSections = (t) => String(t ?? '').replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance|illustrative|public_standard|licensed|NEEDS_REVIEW|VERIFIED)\b/g, (m) => SECTION_LABELS[m] || ORIGIN_STATUS_LABELS[m] || m);
+const humanizeSections = (t) => String(t ?? '')
+  .replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance|illustrative|public_standard|licensed|NEEDS_REVIEW|VERIFIED)\b/g, (m) => SECTION_LABELS[m] || ORIGIN_STATUS_LABELS[m] || m)
+  // review fix: token translation above turns "требуют проверки (NEEDS_REVIEW)" into a tautology
+  // "требуют проверки (требует проверки)" — collapse the now-redundant parenthetical echo.
+  // (требует = sg. "требу"+"ет", требуют = pl. "требу"+"ют" — no shared "е" before the ending.)
+  .replace(/(требу(?:ет|ют) проверки)\s*\(требует проверки\)/g, '$1');
 
 // ---------- storage ----------
 const K_WS = 'ec_v2_workspace', K_IDX = 'ec_v2_projects', KP = id => 'ec_v2_project_' + id;
@@ -143,9 +148,11 @@ function route() {
   ['dashboard', 'project', 'editor', 'print', 'shared', 'norms'].forEach(s => $('screen-' + s).hidden = true);
   const mn = h.match(/^\/norms(?:\/([^/]+))?(?:\/([^/]+))?$/);
   $('advisory').hidden = mp ? true : false;
+  $('homeLink').classList.toggle('active', !mn);
+  $('btnNorms').classList.toggle('active', Boolean(mn));
   if (mn) {
     show('norms');
-    crumbs([['Проекты', '#/'], ['Нормы', '#/norms']]);
+    crumbs(['Щиты', '#/']);
     topBadge(''); setSave(''); $('saveState').textContent = '';
     loadNormDocs().then(() => {
       if (mn[1]) return openNormDoc(mn[1], mn[2] ? { anchor: mn[2] } : {});
@@ -158,7 +165,7 @@ function route() {
   if (ms) {
     PROJ = null;
     show('shared');
-    crumbs([['Проекты', '#/'], ['Только просмотр', '']]);
+    crumbs(['Щиты', '#/']);
     topBadge('');
     setSave(''); $('saveState').textContent = 'только чтение';
     renderShared(ms[1]);
@@ -168,10 +175,10 @@ function route() {
   if (mp) {
     PROJ = projGet(mp[1]);
     if (!PROJ) { go('/'); return; }
-    show('print'); renderPrint(); crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id], ['Печать', '']]); topBadge('');
+    show('print'); renderPrint(); crumbs([PROJ.name, '#/p/' + PROJ.id]); topBadge('');
     return;
   }
-  if (!m) { renderDashboard(); show('dashboard'); crumbs([['Проекты', '#/']]); topBadge(''); return; }
+  if (!m) { renderDashboard(); show('dashboard'); crumbs(null); topBadge(''); return; }
   const pid = m[1], cid = m[2];
   PROJ = projGet(pid);
   if (!PROJ) { go('/'); return; }
@@ -179,10 +186,25 @@ function route() {
   else { renderProject(); show('project'); }
 }
 function show(s) { $('screen-' + s).hidden = false; }
-function crumbs(items) { $('crumbs').innerHTML = items.map((it, i) => i < items.length - 1 ? `<a data-h="${it[1]}">${esc(it[0])}</a> ›` : `<span>${esc(it[0])}</span>`).join(' '); }
+// design-v2-spec §2.2: #crumbs renders ONE "← back-context" element, not a breadcrumb trail — the
+// current screen's own name is already in its h1/h2, so it's never repeated here. `back` is
+// [label, hash] for the parent screen, or null on the dashboard (nothing to go back to).
+function crumbs(back) {
+  $('crumbs').innerHTML = back ? `<a data-h="${esc(back[1])}">← ${esc(back[0])}</a>` : '';
+}
 $('crumbs').addEventListener('click', e => { const h = e.target.dataset.h; if (h) go(h.replace(/^#/, '')); });
 $('homeLink').addEventListener('click', () => go('/'));
 function topBadge(s) { const b = $('statusBadge'); b.textContent = s ? stLabel(s) : '—'; b.title = s || ''; b.className = 'badge ' + ({ PASS: 'pass', FAIL: 'fail', NEEDS_REVIEW: 'review' }[s] || ''); }
+
+// ---------- Russian count agreement (цепь/цепи/цепей, требует/требуют) ----------
+function pluralRu(n, one, few, many) {
+  const n100 = Math.abs(n) % 100, n10 = n100 % 10;
+  if (n100 > 10 && n100 < 20) return many;
+  if (n10 === 1) return one;
+  if (n10 > 1 && n10 < 5) return few;
+  return many;
+}
+function createNewProject() { const p = blankProject(); projSet(p); go('/p/' + p.id); }
 
 // ========================= DASHBOARD =========================
 function renderDashboard(filter) {
@@ -190,27 +212,58 @@ function renderDashboard(filter) {
   if (filter) idx = idx.filter(p => (p.name + ' ' + (p.board_ref || '')).toLowerCase().includes(filter.toLowerCase()));
   const grid = $('projectGrid');
   if (!idx.length) {
-    grid.innerHTML = `<div class="empty">Пока нет щитов.<br><br>Нажми <b>+ Новый щит</b> или <b>Загрузить пример</b>, чтобы начать.</div>`; return;
+    // review fix: the empty state promised "так проще увидеть, как это работает" but the only
+    // route to that (btnSample) was buried in the "Ещё" menu — add a visible ghost trigger here
+    // that reuses the existing #btnSample handler rather than duplicating its logic.
+    grid.innerHTML = `<div class="empty">Пока нет ни одного щита.<br>Начни — так проще увидеть, как это работает.
+      <br><br><button id="btnEmptyNew" class="primary cta">+ Новый щит</button>
+      <button id="btnEmptySample" class="ghost">Загрузить пример</button></div>`;
+    return;
   }
+  // design-v2-spec §2.5: one worded status line per card ("4 цепи · 4 требуют проверки"), not 4 colored chips —
+  // color lives only in the dot, tinted to the worst status present.
   grid.innerHTML = idx.map(p => {
     const r = p.rollup?.counts || { PASS: 0, FAIL: 0, NEEDS_REVIEW: 0 };
-    const chip = (n, cls, lab, code) => `<span class="chip ${n ? cls : 'n'}"${code ? ` title="${esc(code)}"` : ''}>${n} ${esc(lab)}</span>`;
+    const count = p.count || 0;
+    const issues = (r.FAIL || 0) + (r.NEEDS_REVIEW || 0);
+    const worst = r.FAIL ? 'FAIL' : (r.NEEDS_REVIEW ? 'NEEDS_REVIEW' : (count ? 'PASS' : ''));
+    const circuitsWord = pluralRu(count, 'цепь', 'цепи', 'цепей');
+    const statusLine = !count ? 'нет цепей'
+      : issues ? `${count} ${circuitsWord} · ${issues} ${pluralRu(issues, 'требует', 'требуют', 'требуют')} проверки`
+      : `${count} ${circuitsWord} · все соответствуют`;
     return `<div class="card" data-open="${p.id}">
-      <h3>${esc(p.name)} <span class="cref">${esc(p.board_ref || '')}</span></h3>
-      <div class="chips">${chip(p.count || 0, 'n', 'цепей')}${chip(r.PASS, 'pass', 'соответствуют', 'PASS')}${chip(r.NEEDS_REVIEW, 'review', 'требует проверки', 'NEEDS_REVIEW')}${chip(r.FAIL, 'fail', 'не проходят', 'FAIL')}</div>
-      <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div>
-      <div class="cact">
-        <button data-open="${p.id}">Открыть</button>
-        <button data-rename="${p.id}">Переименовать</button>
-        <button data-dup="${p.id}">Дублировать</button>
-        <button data-export="${p.id}" title="Сохранить файл проекта (.ecproj.json)">Файл проекта</button>
-        <button data-del="${p.id}">Удалить</button>
-      </div></div>`;
+      <div class="card-top">
+        <h3>${esc(p.name)} <span class="cref">${esc(p.board_ref || '')}</span></h3>
+        <div class="kebab-wrap">
+          <button class="kebab" data-kebab="${p.id}" type="button" aria-haspopup="true" aria-expanded="false" title="Ещё действия">⋯</button>
+          <div class="kebab-menu" hidden>
+            <button data-rename="${p.id}">Переименовать</button>
+            <button data-dup="${p.id}">Дублировать</button>
+            <button data-export="${p.id}" title="Сохранить файл проекта (.ecproj.json)">Файл проекта</button>
+            <button data-del="${p.id}">Удалить</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-status ${worst}"><span class="dot"></span>${esc(statusLine)}</div>
+      <div class="cmeta"><span>изменён ${when(p.updated_at)}</span></div></div>`;
   }).join('');
 }
 function when(iso) { if (!iso) return '—'; const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return 'только что'; if (s < 3600) return Math.floor(s / 60) + ' мин назад'; if (s < 86400) return Math.floor(s / 3600) + ' ч назад'; return new Date(iso).toLocaleDateString('ru'); }
 
+function closeCardMenus() {
+  document.querySelectorAll('#projectGrid .kebab-menu').forEach(m => { m.hidden = true; });
+  document.querySelectorAll('#projectGrid [data-kebab]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
 $('projectGrid').addEventListener('click', e => {
+  if (e.target.id === 'btnEmptyNew') { createNewProject(); return; }
+  if (e.target.id === 'btnEmptySample') { $('btnSample').click(); return; }
+  const kebab = e.target.closest('[data-kebab]');
+  if (kebab) {
+    const menu = kebab.nextElementSibling, willOpen = menu.hidden;
+    closeCardMenus();
+    if (willOpen) { menu.hidden = false; kebab.setAttribute('aria-expanded', 'true'); }
+    return;
+  }
   const t = e.target, d = t.dataset;
   if (d.del) { const id = d.del; const p = projGet(id); projDel(id); renderDashboard($('dashSearch').value); toast(`Щит «${p?.name || ''}» удалён`, 'Отменить', () => { projSet(p); renderDashboard(); }); return; }
   if (d.rename) { const p = projGet(d.rename); const n = prompt('Имя щита:', p.name); if (n) { p.name = n; projSet(p); renderDashboard($('dashSearch').value); } return; }
@@ -218,7 +271,9 @@ $('projectGrid').addEventListener('click', e => {
   if (d.export) { exportProject(projGet(d.export)); return; }
   if (d.open) { go('/p/' + d.open); }
 });
-$('btnNewProject').addEventListener('click', () => { const p = blankProject(); projSet(p); go('/p/' + p.id); });
+document.addEventListener('click', e => { if (!e.target.closest('#projectGrid')) closeCardMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCardMenus(); });
+$('btnNewProject').addEventListener('click', createNewProject);
 $('btnSample').addEventListener('click', () => { const p = sampleProject(); projSet(p); go('/p/' + p.id); });
 $('dashSearch').addEventListener('input', e => renderDashboard(e.target.value));
 $('importFile').addEventListener('change', importProject);
@@ -345,11 +400,12 @@ async function renderProject() {
     renderBoardProposal(null); $('boardProposalUndo').hidden = true;
     $('boardCopilotMessages').innerHTML = '<div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>';
   }
-  crumbs([['Проекты', '#/'], [p.name, '#/p/' + p.id]]);
+  crumbs(['Щиты', '#/']);
   $('b_name').value = p.name; $('b_ref').value = p.board_ref || ''; $('b_location').value = p.location || '';
   $('b_supply').textContent = `${p.supply.voltage_v} В · ${p.supply.phases}ф · ${p.supply.earthing} · мест ${p.supply.ways_total}`;
   $('projDisclaimer').textContent = 'Рекомендательный расчёт; требуется подпись инженера по каждой цепи и по щиту.';
   renderPackSelect();
+  renderBoardMetaLine();
   resetNormcheckPanel();
   const body = $('scheduleBody');
   if (!p.circuits.length) { body.innerHTML = `<tr><td colspan="14" class="empty" style="border:none">Пусто — добавь цепь или опиши словами ниже.</td></tr>`; $('boardTotals').innerHTML = ''; topBadge(''); $('boardRollup').textContent = '—'; $('boardRollup').className = 'badge'; return; }
@@ -376,12 +432,34 @@ function renderPackSelect() {
   packStatusBadge($('b_packStatus'), PACKS.find(pk => pk.name === cur));
 }
 $('b_pack').addEventListener('change', () => { PROJ.norm_pack = $('b_pack').value; projSet(PROJ); renderProject(); });
+// design-v2-spec §2.4: one quiet metadata line built from the same b_ref/b_location/b_pack fields that
+// live inside the popover — reads the live input values, not just PROJ, so it updates as you type.
+function renderBoardMetaLine() {
+  const p = PROJ;
+  const ref = $('b_ref').value.trim() || '—';
+  const location = $('b_location').value.trim() || '—';
+  const packName = $('b_pack').value || p.norm_pack || PACKS[0]?.name || '';
+  const parts = [ref, location, `${p.supply.voltage_v} В`, `${p.supply.phases}ф`, p.supply.earthing, `${p.supply.ways_total} мест`, packLabel(packName)];
+  $('boardMetaLine').textContent = parts.filter(Boolean).join(' · ');
+}
+function setBoardMetaOpen(open) {
+  $('boardMetaPopover').hidden = !open;
+  $('btnBoardMeta').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+$('btnBoardMeta').addEventListener('click', e => { e.stopPropagation(); setBoardMetaOpen($('boardMetaPopover').hidden); });
+$('btnBoardMetaClose').addEventListener('click', () => setBoardMetaOpen(false));
+document.addEventListener('click', e => {
+  if ($('boardMetaPopover').hidden) return;
+  if (e.target.closest('#boardMetaPopover') || e.target.closest('#btnBoardMeta')) return;
+  setBoardMetaOpen(false);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('boardMetaPopover').hidden) { setBoardMetaOpen(false); $('btnBoardMeta').focus(); } });
 function rowHTML(r, readOnly = false) {
   const sign = r.signoff === 'SIGNED' ? '<svg class="icon icon-sm" viewBox="0 0 24 24" aria-label="подписано" title="подписано"><path d="M20 6 9 17l-5-5"/></svg>' : '';
   return `<tr data-cid="${r.id}">
-    <td class="mono">${esc(r.ref)}</td><td>${esc(r.description)}</td><td>${fmt(r.kw)}</td><td>${fmt(r.pf)}</td>
-    <td class="mono">${esc(r.phase)}</td><td>${fmt(r.IB_a, 1)}</td><td title="${esc(r.device)}">${esc(deviceText(r.device))}</td><td>${esc(r.rcd)}</td>
-    <td>${esc(r.cable)}</td><td>${fmt(r.length_m)}</td><td>${fmt(r.Iz_a, 1)}</td><td>${fmt(r.dU_pct)}</td>
+    <td class="mono">${esc(r.ref)}</td><td>${esc(r.description)}</td><td class="num">${fmt(r.kw)}</td><td class="num">${fmt(r.pf)}</td>
+    <td class="mono">${esc(r.phase)}</td><td class="num">${fmt(r.IB_a, 1)}</td><td title="${esc(r.device)}">${esc(deviceText(r.device))}</td><td>${esc(r.rcd)}</td>
+    <td>${esc(r.cable)}</td><td class="num">${fmt(r.length_m)}</td><td class="num">${fmt(r.Iz_a, 1)}</td><td class="num">${fmt(r.dU_pct)}</td>
     <td class="st-cell ${r.status}" title="${esc(r.status)}">${esc(stLabel(r.status))}${sign}</td>${readOnly ? '' : `
     <td><div class="rowact">
       <button data-edit="${r.id}" title="Править" aria-label="Править цепь"><svg class="icon icon-sm" viewBox="0 0 24 24" style="pointer-events:none"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
@@ -412,8 +490,9 @@ $('scheduleBody').addEventListener('click', e => {
   else if (d.dupc) { const c = PROJ.circuits.find(x => x.id === d.dupc); const copy = JSON.parse(JSON.stringify(c)); copy.id = uid('ckt'); copy.ref = (c.ref || '') + '\''; copy.sort_index = PROJ.circuits.length; PROJ.circuits.push(copy); projSet(PROJ); renderProject(); }
   else { const tr = e.target.closest('tr'); if (tr?.dataset.cid) go('/p/' + PROJ.id + '/c/' + tr.dataset.cid); }
 });
-const saveBoardMeta = debounce(() => { PROJ.name = $('b_name').value; PROJ.board_ref = $('b_ref').value; PROJ.location = $('b_location').value; projSet(PROJ); crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id]]); }, 500);
-['b_name', 'b_ref', 'b_location'].forEach(id => $(id).addEventListener('input', () => { setSave('unsaved'); saveBoardMeta(); }));
+// crumb text no longer echoes the board name (design-v2-spec §2.2: it's a static "← Щиты" on this screen)
+const saveBoardMeta = debounce(() => { PROJ.name = $('b_name').value; PROJ.board_ref = $('b_ref').value; PROJ.location = $('b_location').value; projSet(PROJ); }, 500);
+['b_name', 'b_ref', 'b_location'].forEach(id => $(id).addEventListener('input', () => { setSave('unsaved'); saveBoardMeta(); renderBoardMetaLine(); }));
 $('btnBackDash').addEventListener('click', () => go('/'));
 $('btnAddCircuit').addEventListener('click', () => { const c = newCircuit(); c.sort_index = PROJ.circuits.length; c.ref = 'C' + (PROJ.circuits.length + 1); PROJ.circuits.push(c); projSet(PROJ); go('/p/' + PROJ.id + '/c/' + c.id); });
 $('btnNlAdd').addEventListener('click', nlAddCircuit);
@@ -425,6 +504,17 @@ $('btnNormcheck').addEventListener('click', loadNormcheck);
 $('btnBundle').addEventListener('click', downloadBundle);
 $('btnPrint').addEventListener('click', () => { if (PROJ) go('/p/' + PROJ.id + '/print'); });
 $('btnSldRefresh').addEventListener('click', loadSldPreview);
+
+// ---------- generic dropdown menu helper (design C: board "Ещё" menu) ----------
+function initDropdown(toggle, menu) {
+  const setOpen = open => { menu.hidden = !open; toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  toggle.addEventListener('click', e => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener('click', e => { if (e.target.closest('button,label')) setOpen(false); });
+  document.addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target) && e.target !== toggle) setOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setOpen(false); toggle.focus(); } });
+}
+initDropdown($('btnMore'), $('boardMoreMenu'));
+initDropdown($('btnDashMore'), $('dashMoreMenu'));
 
 // ---------- board-level Copilot: proposal only (docs/15-copilot-tools) ----------
 function boardCopilotMessage(cls, text, sub = '') {
@@ -461,7 +551,9 @@ function renderBoardProposal(proposal, baseVersion = null) {
     ${metricChange('Перекос, %', b0.imbalance_pct, b1.imbalance_pct)} ·
     ${metricChange('Ток ввода, A', b0.incomer_md_a, b1.incomer_md_a)}
   </div>`;
-  $('boardProposalIdentity').textContent = `${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`;
+  // review fix: this was the one identity line in the app with no gloss at all — normIdentity/
+  // importIdentity/sharedIdentity/print all run through humanizeSections already.
+  $('boardProposalIdentity').textContent = humanizeSections(`${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`);
 }
 async function sendBoardCopilot() {
   const input = $('boardCopilotInput'), message = input.value.trim();
@@ -474,10 +566,10 @@ async function sendBoardCopilot() {
     busy.remove();
     boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
     BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
-    if (!response.provenance_ok) boardCopilotMessage('bot', `Числа в ответе не прошли проверку провенанса: ${response.unverified_numbers.join(', ')}. Предложение и расчёт не изменены.`);
-    if (response.error) boardCopilotMessage('bot', `Запрос не завершён: ${response.error}.`);
+    if (!response.provenance_ok) boardCopilotMessage('bot error', `Числа в ответе не прошли проверку провенанса: ${response.unverified_numbers.join(', ')}. Предложение и расчёт не изменены.`);
+    if (response.error) boardCopilotMessage('bot error', `Запрос не завершён: ${response.error}.`);
     renderBoardProposal(response.proposal, baseVersion);
-  } catch (error) { busy.remove(); boardCopilotMessage('bot', 'Ошибка: ' + error.message); }
+  } catch (error) { busy.remove(); boardCopilotMessage('bot error', 'Ошибка: ' + error.message); }
 }
 function applyBoardProposal() {
   if (!BOARD_PROPOSAL || !PROJ) return;
@@ -561,6 +653,22 @@ function applyNormMarkers(findings) {
     tr.querySelector('td')?.appendChild(marker);
   });
 }
+// review fix: some finding.detail strings are a server-side provenance dump — the same
+// origin=/missing reason repeated once per untrusted data section (10+ sections × 4-5 reasons
+// each, comma-joined into one sentence). Detect that shape and fold everything from the dump's
+// opening colon onward into a collapsed <details> — the short lead-in sentence stays visible,
+// the raw enumeration is one click away, styled like the audit-trace tokens (.step).
+function splitProvenanceDetail(detail) {
+  const text = String(detail ?? '');
+  const dumpStart = text.search(/origin=|\bmissing\b/);
+  if (dumpStart === -1) return null;
+  const cut = text.lastIndexOf(':', dumpStart);
+  if (cut === -1) return null;
+  const head = text.slice(0, cut + 1).trim();
+  const rest = text.slice(cut + 1).trim();
+  if (!head || !rest) return null;
+  return { head, rest };
+}
 function renderNormcheck(rep) {
   NORMCHECK = rep;
   const s = rep.summary;
@@ -569,9 +677,13 @@ function renderNormcheck(rep) {
     const unchecked = f.status === 'not_checked';
     const label = unchecked ? 'не проверено' : sevLabel(f.severity);
     const open = f.circuit_id ? `<button class="ghost norm-open" data-norm-cid="${esc(f.circuit_id)}">${esc(f.circuit_ref || 'цепь')} →</button>` : '';
+    const prov = splitProvenanceDetail(f.detail);
+    const detailHtml = prov
+      ? `<p>${esc(prov.head)}</p><details class="norm-detail-more"><summary>подробности провенанса</summary><div class="body">${esc(prov.rest)}</div></details>`
+      : `<p>${esc(f.detail)}</p>`;
     return `<article class="norm-card ${esc(f.severity)} ${unchecked ? 'not-checked' : ''}">
       <span class="norm-sev" title="${esc(unchecked ? 'not_checked' : f.severity)}">${esc(label)}</span>
-      <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
+      <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4>${detailHtml}
         <div class="norm-values">факт: ${esc(JSON.stringify(f.observed))}<br>требуется: ${esc(JSON.stringify(f.required))}</div>
         <div class="norm-cite">${esc(citeText(f.citation))}${citeOpenButton(f.citation)} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
       </div>${open}</article>`;
@@ -665,11 +777,18 @@ async function nlAddCircuit() {
 function openEditor(cid) {
   CID = cid;
   const c = PROJ.circuits.find(x => x.id === cid); if (!c) { go('/p/' + PROJ.id); return; }
-  crumbs([['Проекты', '#/'], [PROJ.name, '#/p/' + PROJ.id], [c.ref || 'цепь', '']]);
+  crumbs([PROJ.name, '#/p/' + PROJ.id]);
   fillForm(c.request, c.meta);
   $('edRef').textContent = c.ref || '(без ref)';
   setSignoffBadge(c.signoff);
+  updateEditorNav();
   recompute();
+}
+// review fix: ‹пред/след› stayed enabled (and clickable, no-op) past the first/last circuit.
+function updateEditorNav() {
+  const i = PROJ.circuits.findIndex(x => x.id === CID);
+  $('btnPrev').disabled = i <= 0;
+  $('btnNext').disabled = i === -1 || i >= PROJ.circuits.length - 1;
 }
 function setSignoffBadge(so) {
   const el = $('edSignoff'); const signed = so?.status === 'SIGNED';
@@ -725,7 +844,9 @@ function renderAll() {
 }
 function renderSummary(r) {
   const c = r.selected_cable, p = r.selected_protection;
-  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${esc(deviceText(p.device_class))} ${fmt(p.In_a)} A`, p.device_class], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Определяет', esc(govLabel(c.governing_constraint)), c.governing_constraint]].map(([k, v, ttl]) => `<div class="kv"><span>${k}:</span> <b${ttl ? ` title="${esc(ttl)}"` : ''}>${v}</b></div>`).join('');
+  // design-v2-spec §2.6: a quiet key-value strip, with "Определяет:" (the governing constraint)
+  // called out — last entry carries the `strong` flag, rendered with the .kv-strong class.
+  $('summary').innerHTML = [['Кабель', `${fmt(c.cross_section_mm2)} мм² ${c.material}/${c.insulation}`], ['IZ', `${fmt(c.Iz_a)} A`], ['Аппарат', `${esc(deviceText(p.device_class))} ${fmt(p.In_a)} A`, p.device_class], ['IB', `${fmt(r.design_current_a)} A`], ['ΔU', `${fmt(r.voltage_drop_pct)} %`], ['Определяет', esc(govLabel(c.governing_constraint)), c.governing_constraint, true]].map(([k, v, ttl, strong]) => `<div class="kv${strong ? ' kv-strong' : ''}"><span>${k}:</span> <b${ttl ? ` title="${esc(ttl)}"` : ''}>${v}</b></div>`).join('');
 }
 $('btnSaveCircuit').addEventListener('click', () => {
   const c = curCircuit(); if (!c) return;
@@ -752,46 +873,49 @@ $('recalc').addEventListener('click', recompute);
 document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phases,#f_pf,#f_purpose,#f_method,#f_material,#f_insulation,#f_ambient,#f_grouping,#f_length,#f_device,#f_curve,#f_iscc,#f_tdisc,#f_vdlimit,#f_phase,#f_rcd,#f_rcd_ma').forEach(el => el.addEventListener('change', recompute));
 
 // ---------- charts (Plotly/SVG) ----------
-const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: '#42557A', size: 12, family: "'Fira Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
+// design-v2-spec §3: Plotly can't consume CSS custom properties directly, so these mirror the
+// :root tokens in styles.css by value — keep them in sync if the palette ever changes there.
+const T = { navy: '#24407A', navySoft: 'rgba(36,64,122,.12)', burgundy: '#7E2440', ink: '#1C2536', dim: '#5A6478', faint: '#8B93A5', ok: '#2E7D4F', okMuted: 'rgba(46,125,79,.55)', warn: '#8A5A16', bad: '#C8321F', grid: '#ECE9E1', notPassing: '#D8D3C7' };
+const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: T.dim, size: 12, family: "'IBM Plex Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
 function renderTCC(t) {
   if (!t) return; const dmax = t.device.max, dmin = t.device.min;
   const deviceOff = t.device.available === false;
   const traces = [
-    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: '#DC2626', width: 2.5 } },
+    { x: t.cable.withstand.map(p => p[0]), y: t.cable.withstand.map(p => p[1]), name: `Кабель ${fmt(t.cable.section_mm2)} мм² (I²t)`, mode: 'lines', line: { color: T.bad, width: 2.5 } },
   ];
   if (!deviceOff) traces.push(
-    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: '#1E40AF', width: 1 }, showlegend: false },
-    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: '#1E40AF', width: 1 }, fill: 'tonexty', fillcolor: 'rgba(30,64,175,.12)' },
+    { x: dmax.map(p => p[0]), y: dmax.map(p => p[1]), mode: 'lines', line: { color: T.navy, width: 1 }, showlegend: false },
+    { x: dmin.map(p => p[0]), y: dmin.map(p => p[1]), name: `${t.device.class}${t.device.class === 'gG_fuse' ? '' : ' ' + t.device.curve_type} (полоса)`, mode: 'lines', line: { color: T.navy, width: 1 }, fill: 'tonexty', fillcolor: T.navySoft },
   );
   const shapes = [], anns = [];
-  vlines(shapes, t.markers.IB, '#5B6B8C', 'dot', 'IB', anns); vlines(shapes, t.markers.In, '#B45309', 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, '#DC2626', 'dot', 'Iscc', anns);
-  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: '#5B6B8C', size: 12 } });
+  vlines(shapes, t.markers.IB, T.faint, 'dot', 'IB', anns); vlines(shapes, t.markers.In, T.warn, 'dash', 'In', anns); vlines(shapes, t.markers.Iscc, T.bad, 'dot', 'Iscc', anns);
+  if (deviceOff) anns.push({ xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, text: 'кривая аппарата отсутствует в норм-пакете', showarrow: false, font: { color: T.faint, size: 12 } });
   const coord = deviceOff ? '' : (t.coordinated === null ? '' : (t.coordinated ? '  ·  иллюстративная проверка: OK' : '  ·  не координируется (иллюстр.)'));
-  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? '#DC2626' : '#42557A' } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: '#DBEAFE' }, yaxis: { type: 'log', title: 'Время, с', gridcolor: '#DBEAFE' }, shapes, annotations: anns }), CFG);
+  Plotly.react('plot_tcc', traces, Object.assign({}, BASE, { title: { text: 'Время-токовая координация' + coord, font: { size: 14, color: t.coordinated === false && !deviceOff ? T.bad : T.dim } }, xaxis: { type: 'log', title: 'Ток, A', gridcolor: T.grid }, yaxis: { type: 'log', title: 'Время, с', gridcolor: T.grid }, shapes, annotations: anns }), CFG);
 }
 function renderSweep(s) {
   if (!s) return; const x = s.rows.map(r => fmt(r.section_mm2)), y = s.rows.map(r => r.Iz_a);
-  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? '#1E40AF' : (r.amp_ok && r.vd_ok && r.sc_ok ? '#4E9B6E' : '#C9D6EA'));
-  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: '#B45309', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  const colors = s.rows.map(r => r.section_mm2 === s.chosen_mm2 ? T.burgundy : (r.amp_ok && r.vd_ok && r.sc_ok ? T.okMuted : T.notPassing));
+  Plotly.react('plot_sweep', [{ x, y, type: 'bar', marker: { color: colors } }], Object.assign({}, BASE, { title: { text: `Подбор сечения — выбрано ${fmt(s.chosen_mm2)} мм² (${govLabel(s.governing)})`, font: { size: 14 } }, xaxis: { title: 'Сечение, мм²', type: 'category' }, yaxis: { title: 'IZ, A', gridcolor: T.grid }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: s.required_iz_a, y1: s.required_iz_a, line: { color: T.warn, width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: s.required_iz_a, text: `требуемый IZ ≥ ${fmt(s.required_iz_a)} A`, showarrow: false, font: { color: T.warn, size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderVD(v) {
   if (!v) return;
-  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: '#1E40AF', width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: '#0F1B33', size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: '#DBEAFE' }, yaxis: { title: 'ΔU, %', gridcolor: '#DBEAFE' }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: '#DC2626', width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: '#DC2626', size: 11 }, yanchor: 'bottom' }] }), CFG);
+  Plotly.react('plot_vd', [{ x: v.series.map(p => p[0]), y: v.series.map(p => p[1]), mode: 'lines', name: `ΔU при ${fmt(v.section_mm2)} мм²`, line: { color: T.navy, width: 2.5 } }, { x: [v.current_length_m], y: [v.current_pct], mode: 'markers', name: 'текущая длина', marker: { color: T.ink, size: 9 } }], Object.assign({}, BASE, { title: { text: 'Профиль падения напряжения', font: { size: 14 } }, xaxis: { title: 'Длина, м', gridcolor: T.grid }, yaxis: { title: 'ΔU, %', gridcolor: T.grid }, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: v.limit_pct, y1: v.limit_pct, line: { color: T.bad, width: 1.5, dash: 'dash' } }], annotations: [{ xref: 'paper', x: 0.01, y: v.limit_pct, text: `предел ${fmt(v.limit_pct)} %`, showarrow: false, font: { color: T.bad, size: 11 }, yanchor: 'bottom' }] }), CFG);
 }
 function renderDerating(d) {
   if (!d) return;
-  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: ['#1E40AF', '#3B82F6', '#15803D'] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: '#DBEAFE' }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: '#B45309', width: 1.5, dash: 'dash' } }] }), CFG);
+  Plotly.react('plot_derating', [{ x: d.stages.map(s => s.label), y: d.stages.map(s => s.value), type: 'bar', marker: { color: [T.navy, '#4F6CA8', T.ok] }, text: d.stages.map(s => fmt(s.value)), textposition: 'outside' }], Object.assign({}, BASE, { title: { text: `Поправочные коэффициенты: It → IZ (нужно ≥ ${fmt(d.required_iz_a)} A)`, font: { size: 14 } }, yaxis: { title: 'A', gridcolor: T.grid }, showlegend: false, shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: d.required_iz_a, y1: d.required_iz_a, line: { color: T.warn, width: 1.5, dash: 'dash' } }] }), CFG);
 }
 function renderSLD(s) {
-  if (!s) return; const col = { PASS: '#15803D', FAIL: '#DC2626', NEEDS_REVIEW: '#B45309' }[s.status] || '#5B6B8C';
+  if (!s) return; const col = { PASS: T.ok, FAIL: T.bad, NEEDS_REVIEW: T.warn }[s.status] || T.faint;
   const bw = 150, gap = 46, y = 70, h = 78; let x = 20, svg = `<svg viewBox="0 0 ${20 + (bw + gap) * 4} 200" class="sld" style="max-width:100%">`;
   s.nodes.forEach((n, idx) => {
-    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="#1E40AF" stroke-width="2"/>`;
-    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="9" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : '#BFD3F2'}" stroke-width="2"/>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="#0F1B33" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
-    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="#42557A" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
+    if (idx > 0) svg += `<line x1="${x - gap}" y1="${y + h / 2}" x2="${x}" y2="${y + h / 2}" stroke="${T.ink}" stroke-width="2"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" fill="#FFFFFF" stroke="${idx === s.nodes.length - 1 ? col : T.ink}" stroke-width="2"/>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 30}" fill="${T.ink}" font-size="14" font-weight="600" text-anchor="middle">${esc(deviceText(n.label))}</text>`;
+    svg += `<text x="${x + bw / 2}" y="${y + 52}" fill="${T.dim}" font-size="12" text-anchor="middle" font-family="monospace">${esc(deviceText(n.sub))}</text>`;
     x += bw + gap;
   });
   svg += `<text x="20" y="30" fill="${col}" font-size="15" font-weight="700">${esc(stLabel(s.status))} · определяет: ${esc(govLabel(s.governing))}</text></svg>`;
@@ -815,22 +939,31 @@ $('tabs').addEventListener('click', e => {
   if (['tcc', 'sweep', 'vd', 'derating'].includes(id)) Plotly.Plots.resize($('plot_' + id));
 });
 
+// design-v2-spec §2.6: right-column "Копилот"/"Обоснование расчёта" tabs — deliberately scoped to
+// #rtabs/.rpane (not the shared .tabs/.tabpane the block above uses), which is queried document-wide.
+$('rtabs').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#rtabs button').forEach(b => b.classList.remove('active')); e.target.classList.add('active');
+  const id = e.target.dataset.rtab;
+  $('paneCopilot').hidden = id !== 'copilot'; $('paneTrace').hidden = id !== 'trace';
+});
+
 // ---------- copilot (editor) ----------
 function addMsg(cls, html, sub) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html + (sub ? `<small>${esc(sub)}</small>` : ''); $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight; }
 async function chatSend() {
   const text = $('chatInput').value.trim(); if (!text) return; addMsg('user', esc(text)); $('chatInput').value = ''; addMsg('bot', 'разбираю…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${esc(deviceText(p.device_class))} <b>${fmt(p.In_a)} A</b>, статус <b>${esc(stLabel(VIZ.result.overall_status))}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot error', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${esc(deviceText(p.device_class))} <b>${fmt(p.In_a)} A</b>, статус <b>${esc(stLabel(VIZ.result.overall_status))}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 async function doExplain() {
   addMsg('bot', 'объясняю…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/explain' + packQuery(), buildRequest()); busy.remove(); const n = j.narrative; const tag = n.model ? `${n.model}; провенанс ${n.provenance_ok ? 'OK' : 'FAIL ' + JSON.stringify(n.unverified_numbers)}` : 'шаблон (без ключа)'; addMsg('bot', esc(n.text), tag); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 async function doReview() {
   addMsg('bot', 'ревьюер проверяет…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/verify' + packQuery(), buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 $('chatSend').addEventListener('click', chatSend);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) chatSend(); });
