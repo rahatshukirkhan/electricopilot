@@ -340,7 +340,7 @@ def copilot_endpoint(body: CopilotRequest, request: Request) -> dict[str, Any]:
         body.message,
         body.history,
         client=_client(),
-        model=cfg.model_strong,
+        model=getattr(cfg, "model_copilot", "") or cfg.model_fast,
         parse_model=cfg.model_fast,
         attachments=body.attachments,
     )

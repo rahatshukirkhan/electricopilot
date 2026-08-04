@@ -91,6 +91,7 @@ cp .env.example .env         # затем вписать OPENROUTER_API_KEY и/�
 |---|---|
 | `OPENROUTER_API_KEY` | доступ к Gemini (OpenRouter); пусто → фолбэк |
 | `ELECTRICOPILOT_MODEL_STRONG` / `_FAST` | `google/gemini-3.1-pro-preview` / `google/gemini-3-flash-preview` |
+| `ELECTRICOPILOT_MODEL_COPILOT` | модель tool-цикла копилота щита; пусто → быстрая (`_FAST`) |
 | `DATABASE_URL` | Neon/Postgres; пусто → аудит JSONL, проекты только в localStorage |
 | `ELECTRICOPILOT_STRICT_PROVENANCE` | строгий провенанс (по умолчанию `true`) |
 | `ELECTRICOPILOT_LLM_ADMISSION_MODE` | доступ к live-LLM: `local` (оконная квота) или `disabled`; кодовый default на Vercel — `disabled`, но `vercel.json` включает `local` (docs/19) |
