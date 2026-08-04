@@ -534,6 +534,18 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .chatbar button .icon{width:18px;height:18px}
 .board-copilot{margin-top:14px}.board-chat{max-height:220px;min-height:70px}.proposal{margin-top:12px}.proposal-board{padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);display:flex;gap:10px;flex-wrap:wrap}
 .board-copilot .chatbar button{width:auto;padding:0 16px}
+.attachments{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0}
+.attach-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 3px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel2);font:500 11.5px var(--sans);color:var(--dim)}
+.attach-chip img{width:30px;height:30px;object-fit:cover;border-radius:4px}
+.attach-x{border:none;background:none;color:var(--dim);cursor:pointer;font-size:14px;padding:0 2px;line-height:1}
+.attach-x:hover{color:var(--bad)}
+.attach-pdf{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:4px;background:var(--bad-soft);color:var(--bad);font:700 9px var(--sans)}
+.wizard{margin:10px 0 0;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel2);display:flex;flex-direction:column;gap:10px}
+.wizard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.wizard-grid label{display:flex;flex-direction:column;gap:3px;font:500 11.5px var(--sans);color:var(--dim)}
+.wizard-grid input{width:100%}
+.wizard-checks{display:flex;gap:14px;flex-wrap:wrap}
+.wizard-checks label{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--sans);cursor:pointer}
 
 /* audit trace --------------------------------------------------------- */
 .trace{display:flex;flex-direction:column;gap:7px}

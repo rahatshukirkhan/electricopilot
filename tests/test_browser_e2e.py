@@ -105,7 +105,10 @@ def playwright() -> Iterator[Playwright]:
 
 @pytest.fixture
 def chromium(playwright: Playwright) -> Iterator[Browser]:
-    browser = playwright.chromium.launch()
+    # Managed CI/sandbox images ship one system Chromium instead of the per-version
+    # playwright download; ELECTRICOPILOT_CHROMIUM points launch() at it.
+    executable = os.environ.get("ELECTRICOPILOT_CHROMIUM") or None
+    browser = playwright.chromium.launch(executable_path=executable)
     yield browser
     browser.close()
 

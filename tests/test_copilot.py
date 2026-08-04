@@ -9,9 +9,12 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 from electricopilot import studio_api
 from electricopilot.copilot import run_copilot
-from electricopilot.copilot.tools import build_proposal
+from electricopilot.copilot.models import CopilotRequest
+from electricopilot.copilot.tools import build_proposal, check_reply_provenance
 from electricopilot.config import Config
 from electricopilot.data.loader import load_data_pack
 from electricopilot.engine import size
@@ -225,6 +228,68 @@ def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None
     assert broken.error == "model_error" and broken.proposal is None
 
 
+_PLAN_IMAGE = "data:image/jpeg;base64,QUJDRA=="
+_PLAN_PDF = "data:application/pdf;base64,QUJDRA=="
+
+
+def test_attached_plans_become_multimodal_user_parts() -> None:
+    client = ScriptedClient([{"content": "Распознал кухню и санузел.", "tool_calls": []}])
+
+    result = run_copilot(
+        _project(),
+        "составь цепи по плану",
+        [],
+        client=client,
+        model="fake/strong",
+        parse_model="fake/fast",
+        attachments=[_PLAN_IMAGE, _PLAN_PDF],
+    )
+
+    assert result.ok
+    user = next(item for item in client.seen_messages[0] if item["role"] == "user")
+    assert user["content"] == [
+        {"type": "text", "text": "составь цепи по плану"},
+        {"type": "image_url", "image_url": {"url": _PLAN_IMAGE}},
+        {"type": "file", "file": {"filename": "plan-2.pdf", "file_data": _PLAN_PDF}},
+    ]
+
+
+def test_no_attachments_keeps_plain_string_user_message() -> None:
+    client = ScriptedClient([{"content": "ок", "tool_calls": []}])
+
+    _run(_project(), client)
+
+    user = next(item for item in client.seen_messages[0] if item["role"] == "user")
+    assert user["content"] == "сделай изменение"
+
+
+def test_copilot_request_rejects_non_plan_or_oversized_attachments() -> None:
+    base = {"project": _project().model_dump(mode="json"), "message": "план"}
+
+    accepted = CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE, _PLAN_PDF]})
+    assert accepted.attachments == [_PLAN_IMAGE, _PLAN_PDF]
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["data:text/html;base64,QUJDRA=="]})
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["https://example.com/plan.jpg"]})
+    with pytest.raises(ValueError, match="слишком большое"):
+        CopilotRequest.model_validate(
+            {**base, "attachments": ["data:image/jpeg;base64," + "A" * 1_500_001]},
+        )
+    with pytest.raises(ValueError):
+        CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE] * 3})
+
+
+def test_reply_provenance_accepts_si_prefix_of_evidence_leaves() -> None:
+    evidence = [{"request": {"load": {"power_w": 3600}}, "meta": {"rcd": {"ma": 30}}}]
+
+    ok, unverified = check_reply_provenance("Духовка 3,6 кВт под УЗО 30 мА (0,03 А).", evidence)
+    assert ok and unverified == []
+
+    ok, unverified = check_reply_provenance("Поставьте 5 кВт.", evidence)
+    assert not ok and unverified == ["5"]
+
+
 def test_unverified_reply_number_is_flagged_without_changing_project() -> None:
     project = _project()
     before = deepcopy(project.model_dump(mode="json"))
@@ -269,6 +334,40 @@ def test_api_no_key_and_frontend_keep_copilot_explicit_and_read_only(
     assert 'id="boardProposalApply"' in html
     shared = html.split('id="screen-shared"', 1)[1].split('id="screen-project"', 1)[0]
     assert "boardCopilot" not in shared and "boardProposalApply" not in shared
+
+
+def test_api_passes_attachments_to_the_copilot_loop(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run_copilot(*args: Any, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        from electricopilot.copilot.models import CopilotResponse
+        return CopilotResponse(ok=True, reply="ок", model="fake/strong")
+
+    monkeypatch.setattr(
+        studio_api,
+        "get_config",
+        lambda: SimpleNamespace(
+            llm_available=True,
+            llm_admission_mode="local",
+            model_strong="fake/strong",
+            model_fast="fake/fast",
+        ),
+    )
+    monkeypatch.setattr(studio_api, "run_copilot", fake_run_copilot)
+
+    response = TestClient(studio_api.app).post(
+        "/api/copilot",
+        json={
+            "project": _project().model_dump(mode="json"),
+            "message": "план кухни",
+            "history": [],
+            "attachments": [_PLAN_IMAGE, _PLAN_PDF],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["attachments"] == [_PLAN_IMAGE, _PLAN_PDF]
 
 
 def test_api_maps_invalid_proposal_to_typed_422(monkeypatch: Any) -> None:

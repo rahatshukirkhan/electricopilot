@@ -555,14 +555,74 @@ function renderBoardProposal(proposal, baseVersion = null) {
   // importIdentity/sharedIdentity/print all run through humanizeSections already.
   $('boardProposalIdentity').textContent = humanizeSections(`${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`);
 }
+// Floor plans attached to the NEXT copilot message; sent as bounded data URLs
+// (docs/15 §15.2: max 2, raster or PDF; photos downscaled client-side to fit max_request_bytes).
+let BOARD_COPILOT_ATTACHMENTS = [];
+const ATTACHMENT_CHAR_LIMIT = 1500000;
+function renderCopilotAttachments() {
+  const root = $('boardCopilotAttachments');
+  root.hidden = !BOARD_COPILOT_ATTACHMENTS.length;
+  root.innerHTML = BOARD_COPILOT_ATTACHMENTS.map((url, index) => {
+    const preview = url.startsWith('data:application/pdf')
+      ? '<span class="attach-pdf">PDF</span>' : `<img src="${url}" alt="план ${index + 1}" />`;
+    return `<span class="attach-chip">${preview}план ${index + 1}<button type="button" class="attach-x" data-i="${index}" title="Убрать">×</button></span>`;
+  }).join('');
+  root.querySelectorAll('.attach-x').forEach(button => button.addEventListener('click', () => {
+    BOARD_COPILOT_ATTACHMENTS.splice(Number(button.dataset.i), 1); renderCopilotAttachments();
+  }));
+}
+function downscalePlanImage(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+    img.src = url;
+  });
+}
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+async function attachPlanFile(file) {
+  if (!file) return;
+  if (BOARD_COPILOT_ATTACHMENTS.length >= 2) { toast('Не больше двух вложений на одно сообщение.'); return; }
+  try {
+    let dataUrl;
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+      dataUrl = await readFileAsDataUrl(file);
+      if (dataUrl.length > ATTACHMENT_CHAR_LIMIT) { toast('PDF слишком большой (лимит ~1 МБ) — сожмите его или пришлите фото/скриншот плана.'); return; }
+    } else {
+      dataUrl = await downscalePlanImage(file);
+      if (dataUrl.length > ATTACHMENT_CHAR_LIMIT) { toast('Фото слишком большое даже после сжатия — обрежьте план.'); return; }
+    }
+    BOARD_COPILOT_ATTACHMENTS.push(dataUrl); renderCopilotAttachments();
+  } catch { toast('Не удалось прочитать файл — нужен JPG, PNG, WebP или PDF.'); }
+}
 async function sendBoardCopilot() {
-  const input = $('boardCopilotInput'), message = input.value.trim();
+  const input = $('boardCopilotInput');
+  const attachments = BOARD_COPILOT_ATTACHMENTS.slice(0, 2);
+  const message = input.value.trim() || (attachments.length ? 'Разбери приложенную планировку и предложи цепи по зонам.' : '');
   if (!message || !PROJ) return;
   const baseVersion = PROJ.updated_at;
-  input.value = ''; boardCopilotMessage('user', message); boardCopilotMessage('bot', 'Copilot планирует и вызывает инструменты…');
+  input.value = ''; BOARD_COPILOT_ATTACHMENTS = []; renderCopilotAttachments();
+  boardCopilotMessage('user', message + (attachments.length ? ` 📎×${attachments.length}` : ''));
+  boardCopilotMessage('bot', 'Copilot планирует и вызывает инструменты…');
   const busy = $('boardCopilotMessages').lastChild;
   try {
-    const response = await postJSON('/api/copilot', { project: PROJ, message, history: BOARD_COPILOT_HISTORY.slice(-20) });
+    const response = await postJSON('/api/copilot', { project: PROJ, message, history: BOARD_COPILOT_HISTORY.slice(-20), attachments });
     busy.remove();
     boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
     BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
@@ -610,6 +670,50 @@ function undoBoardProposal() {
 }
 $('boardCopilotSend').addEventListener('click', sendBoardCopilot);
 $('boardCopilotInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendBoardCopilot(); });
+$('boardCopilotAttach').addEventListener('click', () => $('boardCopilotFile').click());
+$('boardCopilotFile').addEventListener('change', async e => { const file = e.target.files[0]; e.target.value = ''; await attachPlanFile(file); });
+$('boardCopilotInput').addEventListener('paste', e => {
+  const item = Array.from(e.clipboardData?.items || []).find(entry => entry.type.startsWith('image/'));
+  if (item) { e.preventDefault(); attachPlanFile(item.getAsFile()); }
+});
+
+// ---------- «Анкета квартиры»: мастер брифа для копилота ----------
+// Собирает структурированный текст-бриф и подставляет его в чат: пользователь видит и
+// правит текст перед отправкой, сервер получает обычное copilot-сообщение (без новых API).
+function wizardBrief() {
+  const num = id => { const v = Number($(id).value); return Number.isFinite(v) && v > 0 ? v : null; };
+  const on = id => $(id).checked;
+  const parts = [];
+  const rooms = num('wizRooms'), baths = num('wizBaths');
+  parts.push(`Анкета квартиры: комнат — ${rooms || '?'}, санузлов — ${baths || 1}.`);
+  const kitchen = [];
+  if (num('wizHob')) kitchen.push(`варочная панель ${$('wizHob').value} кВт`);
+  if (num('wizOven')) kitchen.push(`духовка ${$('wizOven').value} кВт`);
+  if (on('wizDish')) kitchen.push('посудомойка');
+  if (on('wizFridge')) kitchen.push('холодильник отдельной линией');
+  kitchen.push('розетки кухни (чайник/СВЧ/мелкая техника)');
+  parts.push(`Кухня: ${kitchen.join(', ')}.`);
+  if (on('wizWasher')) parts.push('Стиральная машина.');
+  if (num('wizBoiler')) parts.push(`Бойлер ${$('wizBoiler').value} кВт.`);
+  if (num('wizAc')) parts.push(`Кондиционеры: ${$('wizAc').value} шт.`);
+  if (num('wizFloor')) parts.push(`Тёплый пол ${$('wizFloor').value} кВт.`);
+  if (on('wizTv')) parts.push('ТВ-зона.');
+  if (on('wizDesk')) parts.push('Рабочее место.');
+  const len = num('wizLen');
+  if (len) parts.push(`Средняя длина линии ~${len} м (уточню по факту).`);
+  const notes = $('wizNotes').value.trim();
+  if (notes) parts.push(`Примечания: ${notes}.`);
+  parts.push('Составь полный набор цепей щита: выделенные линии стационарной технике, розеточные группы по помещениям, освещение отдельными группами, УЗО для влажных зон, распредели фазы. Если данных не хватает — спроси одним сообщением.');
+  return parts.join(' ');
+}
+$('btnWizard').addEventListener('click', () => { const p = $('boardWizard'); p.hidden = !p.hidden; });
+$('wizCancel').addEventListener('click', () => { $('boardWizard').hidden = true; });
+$('wizInsert').addEventListener('click', () => {
+  const input = $('boardCopilotInput');
+  input.value = wizardBrief(); $('boardWizard').hidden = true;
+  input.focus(); input.scrollIntoView({ block: 'nearest' });
+  toast('Бриф подставлен в чат — проверь и нажми «Отправить».');
+});
 $('boardProposalApply').addEventListener('click', applyBoardProposal);
 $('boardProposalReject').addEventListener('click', () => { renderBoardProposal(null); boardCopilotMessage('bot', 'Предложение отклонено; проект не изменён.'); });
 $('boardProposalUndo').addEventListener('click', undoBoardProposal);

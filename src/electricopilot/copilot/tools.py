@@ -354,11 +354,23 @@ def _collect_numbers(value: Any, found: set[float]) -> None:
 
 
 def check_reply_provenance(text: str, evidence: list[Any]) -> tuple[bool, list[str]]:
-    """Allow only numbers present as typed leaves of deterministic tool evidence."""
+    """Allow only numbers present as typed leaves of deterministic tool evidence.
+
+    A one-way \u00d71000 scale equivalence is accepted alongside the exact value: evidence
+    stores power_w=3600 and rcd ma=30, while an electrician-facing reply naturally says
+    \u00ab3,6 \u043a\u0412\u0442\u00bb or \u00ab0,03 \u0410\u00bb. Only reply-in-the-larger-unit is forgiven (token*1000 traces
+    to a leaf); the \u00f71000 direction is deliberately NOT allowed \u2014 with the absolute
+    0.05 tolerance floor it would let any ~N*1000 token ride on small leaves like
+    power_factor=1.0. Arbitrary numbers remain flagged.
+    """
     allowed: set[float] = set()
     _collect_numbers(evidence, allowed)
     cleaned = _CITATION.sub(" ", _RULE.sub(" ", text))
     unverified: list[str] = []
+
+    def matches(value: float) -> bool:
+        return any(abs(value - item) <= max(0.05, 0.01 * abs(item)) for item in allowed)
+
     for token in dict.fromkeys(_NUMBER.findall(cleaned)):
         value = float(
             token.replace(" ", "")
@@ -367,7 +379,7 @@ def check_reply_provenance(text: str, evidence: list[Any]) -> tuple[bool, list[s
             .replace("\u202f", "")
             .replace(",", ".")
         )
-        if not any(abs(value - item) <= max(0.05, 0.01 * abs(item)) for item in allowed):
+        if not (matches(value) or matches(value * 1000)):
             unverified.append(token)
     return not unverified, unverified
 

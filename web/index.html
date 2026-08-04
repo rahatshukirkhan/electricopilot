@@ -198,10 +198,38 @@
           <div id="boardCopilotMessages" class="chat board-chat">
             <div class="msg bot">Опиши изменение или спроси о щите. Сервер ничего не применит без подтверждения.</div>
           </div>
+          <div id="boardWizard" class="wizard" hidden>
+            <div class="wizard-grid">
+              <label>Комнат <input id="wizRooms" type="number" min="1" max="10" value="2" /></label>
+              <label>Санузлов <input id="wizBaths" type="number" min="1" max="5" value="1" /></label>
+              <label>Варочная, кВт <input id="wizHob" type="number" min="0" step="0.1" value="7" /></label>
+              <label>Духовка, кВт <input id="wizOven" type="number" min="0" step="0.1" value="3.6" /></label>
+              <label>Бойлер, кВт <input id="wizBoiler" type="number" min="0" step="0.1" value="2" /></label>
+              <label>Тёплый пол, кВт <input id="wizFloor" type="number" min="0" step="0.1" value="0" /></label>
+              <label>Кондиционеров <input id="wizAc" type="number" min="0" max="6" value="1" /></label>
+              <label>Ср. длина линии, м <input id="wizLen" type="number" min="0" value="15" /></label>
+            </div>
+            <div class="wizard-checks">
+              <label><input id="wizDish" type="checkbox" checked /> Посудомойка</label>
+              <label><input id="wizWasher" type="checkbox" checked /> Стиральная</label>
+              <label><input id="wizFridge" type="checkbox" checked /> Холодильник отд. линией</label>
+              <label><input id="wizTv" type="checkbox" checked /> ТВ-зона</label>
+              <label><input id="wizDesk" type="checkbox" /> Рабочее место</label>
+            </div>
+            <input id="wizNotes" placeholder="Примечания: гараж, сауна, плита газовая — что угодно своими словами" />
+            <div class="row btns">
+              <button id="wizInsert" class="primary" type="button">Сформировать бриф</button>
+              <button id="wizCancel" class="ghost" type="button">Свернуть</button>
+            </div>
+          </div>
+          <div id="boardCopilotAttachments" class="attachments" hidden></div>
           <div class="chatbar">
-            <textarea id="boardCopilotInput" rows="2" placeholder="Например: добавь конвейер 5 кВт на L2 и покажи, что изменится"></textarea>
+            <textarea id="boardCopilotInput" rows="2" placeholder="Например: «кухня: духовка 3,6 кВт, ПММ, холодильник — добавь цепи», «выделенная линия на бойлер 2 кВт с УЗО» — или приложи фото/PDF планировки"></textarea>
+            <button id="btnWizard" class="ghost" title="Анкета квартиры: собрать весь щит с нуля">Анкета</button>
+            <button id="boardCopilotAttach" class="ghost" title="Приложить фото или PDF планировки (до 2 шт.)">📷</button>
             <button id="boardCopilotSend" class="primary">Отправить</button>
           </div>
+          <input id="boardCopilotFile" type="file" accept="image/*,application/pdf,.pdf" hidden />
           <div id="boardProposal" class="proposal" hidden>
             <div id="boardProposalDiff"></div>
             <p id="boardProposalIdentity" class="disclaimer"></p>
