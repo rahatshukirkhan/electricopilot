@@ -229,9 +229,10 @@ def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None
 
 
 _PLAN_IMAGE = "data:image/jpeg;base64,QUJDRA=="
+_PLAN_PDF = "data:application/pdf;base64,QUJDRA=="
 
 
-def test_attached_plan_images_become_multimodal_user_parts() -> None:
+def test_attached_plans_become_multimodal_user_parts() -> None:
     client = ScriptedClient([{"content": "Распознал кухню и санузел.", "tool_calls": []}])
 
     result = run_copilot(
@@ -241,7 +242,7 @@ def test_attached_plan_images_become_multimodal_user_parts() -> None:
         client=client,
         model="fake/strong",
         parse_model="fake/fast",
-        images=[_PLAN_IMAGE],
+        attachments=[_PLAN_IMAGE, _PLAN_PDF],
     )
 
     assert result.ok
@@ -249,10 +250,11 @@ def test_attached_plan_images_become_multimodal_user_parts() -> None:
     assert user["content"] == [
         {"type": "text", "text": "составь цепи по плану"},
         {"type": "image_url", "image_url": {"url": _PLAN_IMAGE}},
+        {"type": "file", "file": {"filename": "plan-2.pdf", "file_data": _PLAN_PDF}},
     ]
 
 
-def test_no_images_keeps_plain_string_user_message() -> None:
+def test_no_attachments_keeps_plain_string_user_message() -> None:
     client = ScriptedClient([{"content": "ок", "tool_calls": []}])
 
     _run(_project(), client)
@@ -261,20 +263,21 @@ def test_no_images_keeps_plain_string_user_message() -> None:
     assert user["content"] == "сделай изменение"
 
 
-def test_copilot_request_rejects_non_raster_or_oversized_images() -> None:
+def test_copilot_request_rejects_non_plan_or_oversized_attachments() -> None:
     base = {"project": _project().model_dump(mode="json"), "message": "план"}
 
-    assert CopilotRequest.model_validate({**base, "images": [_PLAN_IMAGE]}).images == [_PLAN_IMAGE]
-    with pytest.raises(ValueError, match="PNG, JPEG или WebP"):
-        CopilotRequest.model_validate({**base, "images": ["data:text/html;base64,QUJDRA=="]})
-    with pytest.raises(ValueError, match="PNG, JPEG или WebP"):
-        CopilotRequest.model_validate({**base, "images": ["https://example.com/plan.jpg"]})
+    accepted = CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE, _PLAN_PDF]})
+    assert accepted.attachments == [_PLAN_IMAGE, _PLAN_PDF]
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["data:text/html;base64,QUJDRA=="]})
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["https://example.com/plan.jpg"]})
     with pytest.raises(ValueError, match="слишком большое"):
         CopilotRequest.model_validate(
-            {**base, "images": ["data:image/jpeg;base64," + "A" * 1_500_001]},
+            {**base, "attachments": ["data:image/jpeg;base64," + "A" * 1_500_001]},
         )
     with pytest.raises(ValueError):
-        CopilotRequest.model_validate({**base, "images": [_PLAN_IMAGE] * 3})
+        CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE] * 3})
 
 
 def test_reply_provenance_accepts_si_prefix_of_evidence_leaves() -> None:
@@ -333,7 +336,7 @@ def test_api_no_key_and_frontend_keep_copilot_explicit_and_read_only(
     assert "boardCopilot" not in shared and "boardProposalApply" not in shared
 
 
-def test_api_passes_attached_images_to_the_copilot_loop(monkeypatch: Any) -> None:
+def test_api_passes_attachments_to_the_copilot_loop(monkeypatch: Any) -> None:
     captured: dict[str, Any] = {}
 
     def fake_run_copilot(*args: Any, **kwargs: Any) -> Any:
@@ -359,12 +362,12 @@ def test_api_passes_attached_images_to_the_copilot_loop(monkeypatch: Any) -> Non
             "project": _project().model_dump(mode="json"),
             "message": "план кухни",
             "history": [],
-            "images": [_PLAN_IMAGE],
+            "attachments": [_PLAN_IMAGE, _PLAN_PDF],
         },
     )
 
     assert response.status_code == 200
-    assert captured["images"] == [_PLAN_IMAGE]
+    assert captured["attachments"] == [_PLAN_IMAGE, _PLAN_PDF]
 
 
 def test_api_maps_invalid_proposal_to_typed_422(monkeypatch: Any) -> None:

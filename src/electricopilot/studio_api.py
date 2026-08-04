@@ -342,7 +342,7 @@ def copilot_endpoint(body: CopilotRequest, request: Request) -> dict[str, Any]:
         client=_client(),
         model=cfg.model_strong,
         parse_model=cfg.model_fast,
-        images=body.images,
+        attachments=body.attachments,
     )
     payload = response.model_dump(mode="json")
     if response.error in {"invalid_tool", "invalid_proposal"}:

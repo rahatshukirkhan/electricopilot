@@ -43,16 +43,17 @@ SYSTEM = (
     "освещение — отдельными группами, не смешивай с розетками; влажные зоны (санузел, "
     "бойлер, стиральная, кухня, улица) — meta.rcd.present=true с ma=30; при трёхфазном "
     "вводе распределяй однофазные линии по L1/L2/L3 равномерно (meta.phase); ref давай "
-    "говорящие («Духовка», «Розетки кухни»).\n"
+    "говорящие («Духовка», «Розетки кухни»). По анкете квартиры (комнаты, санузлы, техника) "
+    "для пустого щита предложи полный набор цепей одним proposal.\n"
     "3. Мощности техники — входные данные: бери их из сообщения пользователя. Если мощность "
     "или длина линии неизвестна — либо задай ОДИН короткий вопрос сразу по всем недостающим "
     "пунктам, либо прими типовое допущение, явно перечисли допущения в ответе и попроси "
     "подтвердить.\n"
     "4. Собери ВСЕ операции в один вызов propose_changes; отдельную цепь можно предварительно "
     "проверить через compute, свободное описание одной цепи — разобрать через parse_circuit.\n"
-    "5. Если приложено фото или план: перечисли, какие помещения и технику ты на нём "
-    "распознал, и составь план по п.2. Длины трасс по картинке не измеряй — это допущения, "
-    "назови их и попроси подтвердить.\n"
+    "5. Если приложено фото или план (в том числе PDF): перечисли, какие помещения и "
+    "технику ты на нём распознал, и составь план по п.2. Длины трасс по картинке не "
+    "измеряй — это допущения, назови их и попроси подтвердить.\n"
     "6. При propose_changes включи краткий reply в content того же ответа: что добавлено или "
     "изменено и какие допущения приняты."
 )
@@ -104,12 +105,23 @@ def _assistant_message(turn: dict[str, Any]) -> dict[str, Any]:
     return {"role": "assistant", "content": turn.get("content"), "tool_calls": calls}
 
 
-def _user_message(message: str, images: list[str]) -> dict[str, Any]:
-    """Plain text, or OpenAI-style multimodal parts when a floor plan/photo is attached."""
-    if not images:
+def _user_message(message: str, attachments: list[str]) -> dict[str, Any]:
+    """Plain text, or OpenAI-style multimodal parts when a floor plan is attached.
+
+    Raster photos become image_url parts; a PDF plan becomes a file part — Gemini via
+    OpenRouter reads both natively, no external parser plugin involved.
+    """
+    if not attachments:
         return {"role": "user", "content": message}
     parts: list[dict[str, Any]] = [{"type": "text", "text": message}]
-    parts.extend({"type": "image_url", "image_url": {"url": url}} for url in images)
+    for index, url in enumerate(attachments, start=1):
+        if url.startswith("data:application/pdf"):
+            parts.append({
+                "type": "file",
+                "file": {"filename": f"plan-{index}.pdf", "file_data": url},
+            })
+        else:
+            parts.append({"type": "image_url", "image_url": {"url": url}})
     return {"role": "user", "content": parts}
 
 
@@ -121,7 +133,7 @@ def run_copilot(
     client: CopilotClient,
     model: str,
     parse_model: str,
-    images: list[str] | None = None,
+    attachments: list[str] | None = None,
     max_iterations: int = 6,
     time_budget_seconds: float = 45.0,
     clock: Callable[[], float] = time.monotonic,
@@ -134,7 +146,7 @@ def run_copilot(
     evidence: list[Any] = [baseline]
     messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM}]
     messages.extend(item.model_dump() for item in history)
-    messages.append(_user_message(message, images or []))
+    messages.append(_user_message(message, attachments or []))
     proposal: Proposal | None = None
 
     def parse(text: str, remaining: float) -> Any:

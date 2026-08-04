@@ -9,11 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from ..models import SizingRequest
 from ..project_contract import CircuitMeta, Project
 
-# Floor-plan photos travel as data URLs so the whole request stays one JSON body under the
-# global max_request_bytes bound (docs/19). Only raster image types Gemini accepts via
-# OpenRouter image_url parts; anything else (pdf, svg, html) is rejected before the LLM.
-_IMAGE_DATA_URL = re.compile(r"^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$")
-_MAX_IMAGE_CHARS = 1_500_000  # ~1.1 MB decoded; client downscales before upload
+# Floor plans travel as data URLs so the whole request stays one JSON body under the
+# global max_request_bytes bound (docs/19). Raster images become OpenRouter image_url
+# parts; PDF becomes a file part (Gemini reads both natively). Anything else (svg, html,
+# office formats) is rejected before the LLM.
+_ATTACHMENT_DATA_URL = re.compile(
+    r"^data:(?:image/(?:png|jpeg|webp)|application/pdf);base64,[A-Za-z0-9+/]+=*$"
+)
+_MAX_ATTACHMENT_CHARS = 1_500_000  # ~1.1 MB decoded; client downscales photos before upload
 
 
 class _ClosedModel(BaseModel):
@@ -29,16 +32,18 @@ class CopilotRequest(_ClosedModel):
     project: Project
     message: str = Field(min_length=1, max_length=8000)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
-    images: list[str] = Field(default_factory=list, max_length=2)
+    attachments: list[str] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")
-    def _images_are_bounded_raster_data_urls(self) -> "CopilotRequest":
-        for url in self.images:
-            if len(url) > _MAX_IMAGE_CHARS:
-                raise ValueError("изображение слишком большое — уменьшите фото планировки")
-            if not _IMAGE_DATA_URL.match(url):
+    def _attachments_are_bounded_plan_data_urls(self) -> "CopilotRequest":
+        for url in self.attachments:
+            if len(url) > _MAX_ATTACHMENT_CHARS:
                 raise ValueError(
-                    "изображение должно быть data-URL формата PNG, JPEG или WebP"
+                    "вложение слишком большое — уменьшите фото или сожмите PDF планировки"
+                )
+            if not _ATTACHMENT_DATA_URL.match(url):
+                raise ValueError(
+                    "вложение должно быть data-URL формата PNG, JPEG, WebP или PDF"
                 )
         return self
 
