@@ -93,6 +93,7 @@ cp .env.example .env         # затем вписать OPENROUTER_API_KEY и/�
 | `ELECTRICOPILOT_MODEL_STRONG` / `_FAST` | `google/gemini-3.1-pro-preview` / `google/gemini-3-flash-preview` |
 | `DATABASE_URL` | Neon/Postgres; пусто → аудит JSONL, проекты только в localStorage |
 | `ELECTRICOPILOT_STRICT_PROVENANCE` | строгий провенанс (по умолчанию `true`) |
+| `ELECTRICOPILOT_LLM_ADMISSION_MODE` | доступ к live-LLM: `local` (оконная квота) или `disabled`; кодовый default на Vercel — `disabled`, но `vercel.json` включает `local` (docs/19) |
 | `ELECTRICOPILOT_BUILD_IDENTITY` | воспроизводимая identity сборки для CalculationManifest; на Vercel fallback — `VERCEL_GIT_COMMIT_SHA` |
 
 ### Neon-проекты и share-ссылки
