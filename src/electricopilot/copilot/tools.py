@@ -96,11 +96,29 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 class CopilotToolError(ValueError):
-    """Stable tool/proposal failure surfaced without applying partial changes."""
+    """Stable tool/proposal failure surfaced without applying partial changes.
 
-    def __init__(self, code: str, message: str) -> None:
+    `details` carries machine-precise validation locations for the MODEL feedback loop
+    (docs/15 §15.3): the humanized Russian message alone proved too vague for the LLM to
+    self-correct («значение не проходит проверку и ещё 11 парам.»).
+    """
+
+    def __init__(self, code: str, message: str, details: list[dict[str, Any]] | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.details = details or []
+
+
+def _error_details(exc: ValidationError, *, limit: int = 20) -> list[dict[str, Any]]:
+    """Compact loc/type/msg triples for the model; no URLs, no echoed input payloads."""
+    return [
+        {
+            "loc": ".".join(str(part) for part in err.get("loc", ())),
+            "type": str(err.get("type", "")),
+            "msg": str(err.get("msg", "")),
+        }
+        for err in exc.errors(include_url=False, include_input=False)[:limit]
+    ]
 
 
 # Field-name -> electrician-facing Russian label, used only to humanize pydantic ValidationErrors
@@ -136,6 +154,10 @@ def _humanize_validation_error(exc: ValidationError, *, limit: int = 4) -> str:
         elif kind == "literal_error":
             allowed = err.get("ctx", {}).get("expected", "")
             parts.append(f"«{label}»: недопустимое значение" + (f" (ожидается {allowed})" if allowed else ""))
+        elif kind == "extra_forbidden":
+            parts.append(f"лишнее поле «{label}» — такого нет в схеме")
+        elif kind in {"union_tag_not_found", "union_tag_invalid"}:
+            parts.append("у операции не указан или некорректен «op» (add/edit/delete)")
         else:
             parts.append(f"«{label}»: значение не проходит проверку")
         if len(parts) >= limit:
@@ -157,7 +179,9 @@ def _normalize_operations(raw_ops: Any, project: Project) -> list[ProposalOperat
     try:
         operations = OPERATIONS_ADAPTER.validate_python(raw_ops)
     except ValidationError as exc:
-        raise CopilotToolError("invalid_proposal", _humanize_validation_error(exc)) from None
+        raise CopilotToolError(
+            "invalid_proposal", _humanize_validation_error(exc), _error_details(exc),
+        ) from None
     if not operations:
         raise CopilotToolError("invalid_proposal", "proposal requires at least one operation")
     if len(operations) > project.supply.ways_total * 2:
@@ -234,7 +258,9 @@ def _apply_operations(project: Project, operations: list[ProposalOperation]) -> 
         candidate = validate_project(payload)
         validate_project_topology(candidate.model_dump(mode="json"))
     except ValidationError as exc:
-        raise CopilotToolError("invalid_proposal", _humanize_validation_error(exc)) from None
+        raise CopilotToolError(
+            "invalid_proposal", _humanize_validation_error(exc), _error_details(exc),
+        ) from None
     except (ProjectContractError, ProjectTopologyError, ValueError) as exc:
         raise CopilotToolError("invalid_proposal", str(exc)) from None
     return candidate
@@ -431,7 +457,9 @@ def execute_tool(
     except CopilotToolError:
         raise
     except ValidationError as exc:
-        raise CopilotToolError("invalid_tool", _humanize_validation_error(exc)) from None
+        raise CopilotToolError(
+            "invalid_tool", _humanize_validation_error(exc), _error_details(exc),
+        ) from None
     except ValueError as exc:
         raise CopilotToolError("invalid_tool", str(exc)) from None
     raise CopilotToolError("invalid_tool", f"unknown tool: {name}")

@@ -56,7 +56,12 @@ SYSTEM = (
     "4. Работай за МИНИМУМ ходов: обычно первый и единственный вызов — сразу propose_changes "
     "со ВСЕМИ операциями; diff по каждой цепи он рассчитает сам. НЕ вызывай compute на "
     "каждую цепь — только для точечной проверки одной спорной; parse_circuit — только для "
-    "непонятной свободной формулировки.\n"
+    "непонятной свободной формулировки. Минимальная валидная операция добавления:\n"
+    '{"op":"add","ref":"Духовка","request":{"load":{"description":"Духовка","power_w":3600,'
+    '"voltage_v":230,"phases":1},"installation":{"method":"C","length_m":15}},'
+    '"meta":{"phase":"L1","rcd":{"present":true,"ma":30}}}\n'
+    "— остальные поля имеют разумные дефолты; НЕ добавляй полей, которых нет в схеме "
+    "инструмента, и укажи ровно одно из load.power_w / load.current_a.\n"
     "5. Если приложено фото или план (в том числе PDF): перечисли, какие помещения и "
     "технику ты на нём распознал, и составь план по п.2. Длины трасс по картинке не "
     "измеряй — это допущения, назови их и попроси подтвердить.\n"
@@ -239,7 +244,14 @@ def run_copilot(
                     "tool_call_id": call_id,
                     "name": name,
                     "content": json.dumps(
-                        {"ok": False, "error": exc.code, "message": str(exc)},
+                        {
+                            "ok": False,
+                            "error": exc.code,
+                            "message": str(exc),
+                            # Machine-precise loc/type/msg triples: the humanized text
+                            # alone was too vague for the model to self-correct.
+                            "details": exc.details,
+                        },
                         ensure_ascii=False, sort_keys=True,
                     ),
                 })

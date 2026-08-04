@@ -217,6 +217,22 @@ def test_validation_error_feeds_back_to_the_model_instead_of_aborting() -> None:
     assert feedback["ok"] is False and feedback["error"] == "invalid_proposal"
 
 
+def test_validation_feedback_carries_machine_precise_details() -> None:
+    client = ScriptedClient([
+        _tool_turn("propose_changes", {"ops": [{"ref": "X", "request": _request()}]}),
+        {"content": "Схему понял; жду уточнений.", "tool_calls": []},
+    ])
+
+    result = _run(_project(), client)
+
+    assert result.ok
+    error_result = next(item for item in client.seen_messages[1] if item["role"] == "tool")
+    feedback = json.loads(error_result["content"])
+    assert feedback["ok"] is False
+    assert feedback["details"] and all({"loc", "type", "msg"} <= set(d) for d in feedback["details"])
+    assert "op" in feedback["message"]
+
+
 def test_unrecovered_validation_error_ends_as_iteration_limit_with_diagnostics() -> None:
     bad_turn = _tool_turn(
         "propose_changes", {"ops": [{"op": "delete", "circuit_id": "missing"}]},
