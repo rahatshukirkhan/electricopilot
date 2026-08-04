@@ -25,8 +25,11 @@ ARROW_Y = 218.0          # long drop fills the A3 sheet and clears the rotated s
 MAX_PER_SHEET = 16
 
 # design-v2-spec §3: status colours as the ok/warn/bad tokens (styles.css :root); burgundy is
-# reserved for brand accents, not used for status here.
-STATUS_COLOR = {"PASS": "#2E7D4F", "FAIL": "#C8321F", "NEEDS_REVIEW": "#A9701E"}
+# reserved for brand accents, not used for status here. NEEDS_REVIEW darkened from #A9701E to
+# #8A5A16 alongside the CSS --warn token (contrast review: the old amber was ~4.18:1 on white,
+# below the spec's own ≥4.5:1 bar) — kept identical to styles.css so the SVG and the app UI never
+# drift onto two different "warn" colours.
+STATUS_COLOR = {"PASS": "#2E7D4F", "FAIL": "#C8321F", "NEEDS_REVIEW": "#8A5A16"}
 _STATUS_LABEL = {"PASS": "PASS", "FAIL": "FAIL", "NEEDS_REVIEW": "REVIEW"}
 
 # design-v2-spec §3 "заодно": report["data_identity"] (calculation_manifest.py) is built for
@@ -131,10 +134,10 @@ def build_sld(project: ProjectInput, report: dict[str, Any]) -> list[Drawing]:
 def _draw_footer(d: Drawing, report: dict[str, Any]) -> None:
     """Advisory disclaimer + data-pack provenance on every sheet (docs/13 §each doc carries it)."""
     d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 3.5,
-               str(report.get("disclaimer", "")), height=1.65, anchor="start", color="#A9701E"))  # --warn
+               str(report.get("disclaimer", "")), height=1.65, anchor="start", color="#8A5A16"))  # --warn
     d.add(Text(MARGIN + 2, SHEET_H - MARGIN - 1.0,
                str(report.get("signoff_notice", "UNSIGNED_ADVISORY")),
-               height=1.65, anchor="start", color="#A9701E"))  # --warn
+               height=1.65, anchor="start", color="#8A5A16"))  # --warn
     d.add(Text(MARGIN + 190, SHEET_H - MARGIN - 1.0,
                _gloss_provenance(str(report.get("data_identity", ""))),
                height=1.65, anchor="start", color="#5A6478"))  # --dim

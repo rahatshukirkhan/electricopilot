@@ -28,8 +28,14 @@
   --burgundy-press:#66192F;
   --burgundy-soft:rgba(126,36,64,.08);
 
-  --ok:#2E7D4F; --warn:#A9701E; --bad:#C8321F;
-  --ok-soft:rgba(46,125,79,.10); --warn-soft:rgba(169,112,30,.10); --bad-soft:rgba(200,50,31,.10);
+  /* review fix: --warn was #A9701E — 4.18:1 on white, 3.6-3.7:1 on --wash/--warn-soft, all below
+     the spec's own ≥4.5:1 bar for the exact "warn on white" pair it calls out for manual checking
+     (design-v2-spec §1). Darkened to #8A5A16 (5.14-5.91:1 across card/wash/warn-soft/burgundy-soft)
+     — same amber hue, still clearly distinct from --ok/--bad. --warn-soft/every hardcoded
+     rgba(169,112,30,…) below is the same color at various alphas — updated together so pill
+     borders/fills stay one consistent amber. */
+  --ok:#2E7D4F; --warn:#8A5A16; --bad:#C8321F;
+  --ok-soft:rgba(46,125,79,.10); --warn-soft:rgba(138,90,22,.10); --bad-soft:rgba(200,50,31,.10);
 
   /* ---- v1 (proto-C) aliases — old names kept live, remapped onto the v2 palette ---- */
   --bg:var(--paper); --bg-2:#F1EFE9;
@@ -82,6 +88,9 @@ body{
 
 button{cursor:pointer;font:inherit;color:inherit}
 button:has(.icon){display:inline-flex;align-items:center;justify-content:center;gap:6px}
+/* review fix: no [disabled] treatment existed anywhere — disabled buttons (import confirm, editor
+   ‹пред/след› at the first/last circuit) looked identical to enabled ones and stayed hoverable. */
+button:disabled{opacity:.42;cursor:not-allowed;pointer-events:none}
 :where(input,select,textarea){
   font:inherit; background:var(--panel2); color:var(--txt);
   border:1px solid var(--line); border-radius:var(--r-sm);
@@ -156,7 +165,7 @@ svg{display:block}
 .badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.9}
 .badge.pass{color:var(--ok);border-color:rgba(46,125,79,.4);background:var(--ok-soft)}
 .badge.fail{color:var(--bad);border-color:rgba(200,50,31,.4);background:var(--bad-soft)}
-.badge.review{color:var(--warn);border-color:rgba(169,112,30,.4);background:var(--warn-soft)}
+.badge.review{color:var(--warn);border-color:rgba(138,90,22,.4);background:var(--warn-soft)}
 .badge.small{font-size:11px;padding:3px 10px}
 
 /* ===================== advisory ribbon (design-v2-spec §2.8: 26px, wash bg, amber text) ===================== */
@@ -269,7 +278,7 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .chip.n{color:var(--faint)}.chip.n::before{display:none}
 .chip.pass{color:var(--ok);border-color:rgba(46,125,79,.35);background:var(--ok-soft)}
 .chip.fail{color:var(--bad);border-color:rgba(200,50,31,.35);background:var(--bad-soft)}
-.chip.review{color:var(--warn);border-color:rgba(169,112,30,.35);background:var(--warn-soft)}
+.chip.review{color:var(--warn);border-color:rgba(138,90,22,.35);background:var(--warn-soft)}
 .card .cmeta{font-size:12px;color:var(--faint);display:flex;justify-content:space-between;margin-top:11px}
 .empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:64px 20px;
   border:1px dashed var(--line-2);border-radius:var(--r-lg);background:var(--panel2);line-height:1.9}
@@ -281,7 +290,7 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .import-grid{display:grid;grid-template-columns:minmax(340px,.9fr) minmax(420px,1.1fr);gap:24px}
 .import-issues{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .import-issue{font:500 11px/1.4 var(--mono);padding:5px 8px;border-radius:var(--r-sm);
-  color:var(--warn);background:var(--warn-soft);border:1px solid rgba(169,112,30,.25)}
+  color:var(--warn);background:var(--warn-soft);border:1px solid rgba(138,90,22,.25)}
 .import-table{width:100%;border-collapse:collapse;font-size:12px}
 .import-table th,.import-table td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--line)}
 .import-table th{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
@@ -297,7 +306,7 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 .import-diff-row.not_checked{border-left:3px solid var(--warn);background:var(--warn-soft)}
 .import-diff-row.match{border-left:3px solid var(--ok);background:var(--ok-soft)}
 .import-confirm{display:flex;align-items:flex-start;gap:8px;margin:14px 0;padding:12px 14px;
-  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(169,112,30,.4);border-radius:var(--r-sm);font-size:12px}
+  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(138,90,22,.4);border-radius:var(--r-sm);font-size:12px}
 .import-confirm input{width:auto;margin-top:2px}.import-actions{display:flex;gap:9px;justify-content:flex-end}
 @media(max-width:900px){.import-grid{grid-template-columns:1fr}}
 
@@ -337,7 +346,7 @@ button.mini:hover{border-color:var(--acc);background:var(--elev)}
 
 .shared-head{display:flex;justify-content:space-between;gap:22px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
 .shared-head h2{margin:9px 0 4px}.shared-warning{max-width:560px;margin:0;padding:10px 12px;
-  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(169,112,30,.4);
+  color:#6B4A12;background:var(--warn-soft);border:1px solid rgba(138,90,22,.4);
   border-radius:var(--r);font-size:12px;line-height:1.55}
 #screen-shared .schedule tbody tr{cursor:default}
 
@@ -362,7 +371,7 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .st-cell::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .st-cell.PASS{color:var(--ok);background:var(--ok-soft);border-color:rgba(46,125,79,.3)}
 .st-cell.FAIL{color:var(--bad);background:var(--bad-soft);border-color:rgba(200,50,31,.3)}
-.st-cell.NEEDS_REVIEW{color:var(--warn);background:var(--warn-soft);border-color:rgba(169,112,30,.3)}
+.st-cell.NEEDS_REVIEW{color:var(--warn);background:var(--warn-soft);border-color:rgba(138,90,22,.3)}
 .rowact{display:flex;gap:5px}
 .rowact button{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--dim);
   padding:4px;display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;transition:border-color var(--dur),color var(--dur),background var(--dur)}
@@ -374,14 +383,21 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .quickadd input{flex:1;min-width:260px}
 .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:4px}
 .totbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--shadow)}
-.totbox h4{margin:0 0 8px;font:600 11px/1.3 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.07em;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+/* review fix: was 11px/uppercase/.07em, out of step with the .panel-h pattern (design-v2-spec §1:
+   panel headers 12.5px/600 sans, no caps) that every other panel title in the app already follows */
+.totbox h4{margin:0 0 8px;font:600 12.5px/1.3 var(--sans);color:var(--dim);text-transform:none;letter-spacing:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 /* design-v2-spec §1: burgundy marks key figures in totals */
 .totbox .big{font:600 24px/1.1 var(--mono);color:var(--burgundy);letter-spacing:-.01em}
 .totbox .big+div{color:var(--dim);font-size:12px;margin-top:3px}
 .totbox .warn{color:var(--warn)}
-.phbar{display:flex;gap:8px;align-items:flex-end;height:56px;margin:14px 0 24px;padding-top:4px}
+/* review fix: the two-line L1/L2/L3 + amps label sat only 21px below the bar (.b span bottom:-21px)
+   while a two-line 11px/1.25 label needs ~28px — it crept up onto the bar itself, and the box's
+   own 24px bottom margin left no clearance before the next line ("перекос …") below it. Bumped
+   both the label offset and the box's bottom margin so the label clears the bar and has its own
+   quiet strip beneath it. */
+.phbar{display:flex;gap:8px;align-items:flex-end;height:56px;margin:14px 0 40px;padding-top:4px}
 .phbar .b{flex:1;background:var(--acc);border-radius:2px 2px 0 0;min-height:4px;position:relative}
-.phbar .b span{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:500 11px/1.25 var(--mono);color:var(--dim)}
+.phbar .b span{position:absolute;top:100%;margin-top:6px;left:0;right:0;text-align:center;font:500 11px/1.25 var(--mono);color:var(--dim)}
 
 /* normcheck ----------------------------------------------------------- */
 .norm-panel{margin-top:16px}
@@ -401,10 +417,21 @@ table.schedule tr.spare td{color:var(--faint);font-style:italic}
 .norm-card.info .norm-sev{color:var(--acc)}
 .norm-card.not-checked .norm-sev{color:var(--faint)}
 .norm-main h4{margin:0 0 4px;font-size:13px}.norm-main p{margin:0;color:var(--dim);font-size:12px;line-height:1.5}
-.norm-values{margin-top:5px;font:500 11px/1.45 var(--mono);color:var(--faint);overflow-wrap:anywhere}
-.norm-cite{margin-top:4px;color:var(--faint);font-size:10.5px}
+/* review fix: --faint is 3.08:1 on white — fine for decoration, not for text that carries meaning
+   (факт/требуется values, citation + source-trust line, the identity footer). Raised to --dim
+   (5.9-6:1 on card) here; --faint stays for genuinely decorative uses elsewhere (dots, chevrons). */
+.norm-values{margin-top:5px;font:500 11px/1.45 var(--mono);color:var(--dim);overflow-wrap:anywhere}
+.norm-cite{margin-top:4px;color:var(--dim);font-size:10.5px}
 .norm-open{white-space:nowrap;padding:5px 9px;font-size:11px}
-.norm-identity{padding:0 12px 12px;color:var(--faint);font-size:10.5px;line-height:1.55}
+.norm-identity{padding:0 12px 12px;color:var(--dim);font-size:10.5px;line-height:1.55}
+/* review fix: collapsed provenance-dump <details> (renderNormcheck splitProvenanceDetail) —
+   styled like the .step audit-trace tokens it's meant to echo */
+.norm-detail-more{margin-top:5px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel2);overflow:hidden}
+.norm-detail-more summary{padding:5px 9px;cursor:pointer;font:600 11px var(--sans);color:var(--dim);list-style:none;user-select:none}
+.norm-detail-more summary::-webkit-details-marker{display:none}
+.norm-detail-more summary:hover{color:var(--txt)}
+.norm-detail-more[open] summary{border-bottom:1px solid var(--line)}
+.norm-detail-more .body{padding:6px 9px;font:500 11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere}
 .norm-marker{display:inline-flex;margin-left:5px;padding:1px 5px;border-radius:10px;font:700 9px var(--mono);vertical-align:middle}
 .norm-marker.error{color:var(--bad);background:var(--bad-soft)}
 .norm-marker.warning{color:var(--warn);background:var(--warn-soft)}
@@ -425,8 +452,11 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 #screen-editor{padding:0;height:100%;display:flex;flex-direction:column;min-height:0}  /* editor-bar + .grid carry their own padding; fills the workspace column */
 #screen-editor[hidden]{display:none}  /* [hidden] обязан побеждать: display:flex выше иначе перебивает атрибут (см. .toast[hidden]) */
 .grid{flex:1;min-height:0;display:grid;grid-template-columns:312px 1fr 352px;gap:14px;padding:14px 18px}
-.col{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;padding-right:2px}
-.center{overflow:auto}
+/* review fix: grid items default to min-width:auto, so the center track refused to shrink below
+   the nowrap .tabs row's content width and pushed into the right column (#paneCopilot) at 1280px —
+   min-width:0 lets the 1fr track actually shrink to its grid cell */
+.col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0;overflow:auto;padding-right:2px}
+.center{overflow:auto;min-width:0}
 
 /* form ---------------------------------------------------------------- */
 .form{display:flex;flex-direction:column;gap:16px}
@@ -438,15 +468,18 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* fieldset groups (docs/17 §5): no default box — thin top rule + panel-h legend */
 .fgroup{display:flex;flex-direction:column;gap:9px;border:0;border-top:1px solid var(--line);
   margin:0;padding:14px 0 0;min-width:0;min-inline-size:0}
+/* review fix: was 11px/uppercase/.08em — design-v2-spec §1 bans caps on panel-level headers (see
+   .panel-h) and these fieldset legends (НАГРУЗКА, КАБЕЛЬ И ПРОКЛАДКА…) are exactly that pattern */
 .fgroup>legend{display:block;width:100%;float:none;padding:0;margin:0;
-  font:600 11px/1 var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  font:600 12.5px/1.3 var(--sans);color:var(--dim);text-transform:none;letter-spacing:0}
 
 /* summary bar --------------------------------------------------------- */
 .summary{display:flex;flex-wrap:wrap;gap:10px 8px;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow)}
 .summary .kv{font-size:12px;display:flex;flex-direction:column;gap:3px;padding:2px 15px 2px 0;margin-right:3px;border-right:1px solid var(--line);flex:0 1 auto}
 .summary .kv:last-child{border-right:none;padding-right:0;margin-right:0}
-.summary .kv span{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;white-space:nowrap}
+/* review fix: was 10.5px/uppercase/.05em — same no-caps rule as .panel-h/.fgroup>legend (design-v2-spec §1) */
+.summary .kv span{color:var(--dim);font-size:12.5px;text-transform:none;letter-spacing:0;font-weight:600;white-space:nowrap}
 .summary .kv b{color:var(--txt);font:600 14.5px var(--mono);letter-spacing:-.01em;white-space:nowrap}
 /* design-v2-spec §2.6: "Определяет:" is the one governing-constraint value worth calling out
    in an otherwise quiet key-value strip — burgundy, like other key figures (design-v2-spec §1). */
@@ -454,7 +487,9 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .summary .kv.kv-strong b{color:var(--burgundy)}
 
 /* tabs + artifact ----------------------------------------------------- */
-.tabs{display:flex;gap:3px;margin-top:2px;border-bottom:1px solid var(--line);padding:0 2px}
+/* review fix: flex-wrap:nowrap (the implicit default) let the 5 chart tabs overflow their own
+   column and overlap the right-hand Копилот/Обоснование panel at 1280×720 — wrap instead */
+.tabs{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;border-bottom:1px solid var(--line);padding:0 2px}
 .tabs button{background:transparent;color:var(--dim);border:none;border-radius:var(--r-sm) var(--r-sm) 0 0;
   padding:9px 14px;font:500 13px var(--sans);position:relative;transition:color var(--dur),background var(--dur)}
 .tabs button:hover{color:var(--txt);background:var(--panel2)}
@@ -464,7 +499,7 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .plot{width:100%;height:100%}
 .artifact .tabpane{height:100%}
 .prov{font-size:11px;color:var(--warn);margin-top:9px;padding:8px 12px;background:var(--warn-soft);
-  border:1px solid rgba(169,112,30,.28);border-radius:var(--r);line-height:1.55}
+  border:1px solid rgba(138,90,22,.28);border-radius:var(--r);line-height:1.55}
 .disclaimer{font-size:11px;color:var(--faint);margin-top:8px;line-height:1.6}
 
 /* copilot ------------------------------------------------------------- */
@@ -484,6 +519,10 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .msg{padding:9px 12px;border-radius:var(--r);font-size:13px;line-height:1.5;max-width:92%;position:relative}
 .msg.user{align-self:flex-end;background:var(--acc);color:var(--acc-ink);font-weight:500}
 .msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+/* review fix: Copilot failures (network/HTTP errors, unfinished requests, failed provenance
+   checks) were rendered as plain .msg.bot — visually identical to a normal answer. Mirrors the
+   existing .msg.rev.bad treatment so a failure reads as a failure at a glance. */
+.msg.bot.error{background:var(--bad-soft);border-color:rgba(200,50,31,.35);color:var(--bad)}
 .msg.rev{align-self:flex-start;background:var(--ok-soft);border:1px solid rgba(46,125,79,.35)}
 .msg.rev.bad{background:var(--bad-soft);border-color:rgba(200,50,31,.4)}
 .msg b{font-weight:600}
@@ -615,14 +654,14 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 /* design-v2-spec §2.7: "действует" is an ok-pilyulya, matching .badge.pass/.chip.pass elsewhere */
 .nlib-status.in_force { color: var(--ok); border-color: rgba(46,125,79,.4); background: var(--ok-soft); }
 .nlib-status.repealed { color: var(--bad); border-color: rgba(200,50,31,.4); background: var(--bad-soft); }
-.nlib-status.unknown { color: var(--warn); border-color: rgba(169,112,30,.4); background: var(--warn-soft); }
+.nlib-status.unknown { color: var(--warn); border-color: rgba(138,90,22,.4); background: var(--warn-soft); }
 /* §8.4: у отменённого документа сноска об утрате силы видна везде, где показан его текст */
 .nlib-repealed-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid var(--bad); background: var(--bad-soft); font-size: 13px; }
 .nlib-hit { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: var(--card); }
 .nlib-hit:hover { border-color: var(--line-2); }
 .nlib-hit .crumb { font-size: 12px; color: var(--dim); }
 /* highlighter tint tied to --warn (amber family) rather than a stray yellow literal */
-.nlib-hit mark { background: rgba(169,112,30,.22); padding: 0 1px; }
+.nlib-hit mark { background: rgba(138,90,22,.22); padding: 0 1px; }
 .nlib-body p { margin: 0 0 10px; line-height: 1.55; }
 /* §10.4: секции с таблицами — моноширинно, горизонтальный скролл внутри блока */
 .nlib-body pre.nlib-table { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
@@ -668,9 +707,11 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
 .nlib-text h4.nlib-h { font-size: 14px; margin: 16px 0 6px; color: var(--dim); }
 .nlib-clause { position: relative; margin: 0 0 12px; }
 .nlib-clause p { margin: 0 0 8px; }
-/* Якорь — адрес пункта, а не часть нормы: мелко, на поле, проявляется при наведении. */
+/* Якорь — адрес пункта, а не часть нормы: мелко, на поле, проявляется при наведении.
+   review fix: --faint measured 2.93-3.08:1 here — raised to --dim (still the quietest text color
+   available that clears 4.5:1) since it's still real, readable text once revealed on hover. */
 .nlib-anchor-link { position: absolute; left: -64px; top: 3px; width: 56px; text-align: right;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: var(--faint);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: var(--dim);
   text-decoration: none; opacity: 0; transition: opacity .12s; }
 .nlib-clause:hover .nlib-anchor-link { opacity: 1; }
 .nlib-anchor-link:hover { color: var(--navy); }
@@ -678,12 +719,14 @@ table.schedule tr.norm-review td:first-child{box-shadow:inset 3px 0 var(--faint)
    Tied to --warn (amber family), like .nlib-hit mark, instead of a stray yellow literal. */
 .nlib-focus { border-radius: var(--r-sm); animation: nlib-fade 2.8s ease-out forwards; }
 @keyframes nlib-fade {
-  0%, 45% { background: rgba(169,112,30,.24); box-shadow: 0 0 0 6px rgba(169,112,30,.24); }
+  0%, 45% { background: rgba(138,90,22,.24); box-shadow: 0 0 0 6px rgba(138,90,22,.24); }
   100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
 }
 .nlib-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
-@media (max-width: 1200px) { .nlib-anchor-link { position: static; opacity: .55; width: auto;
+@media (max-width: 1200px) { /* review fix: was opacity:.55 — ~2.3:1 on white where this is always
+  visible (not hover-revealed like above); full opacity keeps the same --dim color readable */
+  .nlib-anchor-link { position: static; opacity: 1; width: auto;
   display: block; text-align: left; margin-bottom: 2px; } }
 @media (max-width: 900px) { .nlib-layout { grid-template-columns: 1fr; }
   .nlib-outline, .nlib-reader { max-height: none; }

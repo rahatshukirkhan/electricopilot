@@ -32,7 +32,12 @@ const deviceText = (s) => String(s ?? '').replace(/gG_fuse/g, 'Предохра�
 // Provenance/disclaimer strings are server-generated Russian prose that lists untrusted sections and
 // origin/status codes by their raw code — translate just those tokens for display (server text is
 // not otherwise rewritten).
-const humanizeSections = (t) => String(t ?? '').replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance|illustrative|public_standard|licensed|NEEDS_REVIEW|VERIFIED)\b/g, (m) => SECTION_LABELS[m] || ORIGIN_STATUS_LABELS[m] || m);
+const humanizeSections = (t) => String(t ?? '')
+  .replace(/\b(standard_ratings|standard_sections|device_parameters|overload_rule|ampacity|ambient_correction|grouping_correction|adiabatic_k|voltage_drop_limit|resistivity|reactance|illustrative|public_standard|licensed|NEEDS_REVIEW|VERIFIED)\b/g, (m) => SECTION_LABELS[m] || ORIGIN_STATUS_LABELS[m] || m)
+  // review fix: token translation above turns "требуют проверки (NEEDS_REVIEW)" into a tautology
+  // "требуют проверки (требует проверки)" — collapse the now-redundant parenthetical echo.
+  // (требует = sg. "требу"+"ет", требуют = pl. "требу"+"ют" — no shared "е" before the ending.)
+  .replace(/(требу(?:ет|ют) проверки)\s*\(требует проверки\)/g, '$1');
 
 // ---------- storage ----------
 const K_WS = 'ec_v2_workspace', K_IDX = 'ec_v2_projects', KP = id => 'ec_v2_project_' + id;
@@ -207,8 +212,12 @@ function renderDashboard(filter) {
   if (filter) idx = idx.filter(p => (p.name + ' ' + (p.board_ref || '')).toLowerCase().includes(filter.toLowerCase()));
   const grid = $('projectGrid');
   if (!idx.length) {
+    // review fix: the empty state promised "так проще увидеть, как это работает" but the only
+    // route to that (btnSample) was buried in the "Ещё" menu — add a visible ghost trigger here
+    // that reuses the existing #btnSample handler rather than duplicating its logic.
     grid.innerHTML = `<div class="empty">Пока нет ни одного щита.<br>Начни — так проще увидеть, как это работает.
-      <br><br><button id="btnEmptyNew" class="primary cta">+ Новый щит</button></div>`;
+      <br><br><button id="btnEmptyNew" class="primary cta">+ Новый щит</button>
+      <button id="btnEmptySample" class="ghost">Загрузить пример</button></div>`;
     return;
   }
   // design-v2-spec §2.5: one worded status line per card ("4 цепи · 4 требуют проверки"), not 4 colored chips —
@@ -247,6 +256,7 @@ function closeCardMenus() {
 }
 $('projectGrid').addEventListener('click', e => {
   if (e.target.id === 'btnEmptyNew') { createNewProject(); return; }
+  if (e.target.id === 'btnEmptySample') { $('btnSample').click(); return; }
   const kebab = e.target.closest('[data-kebab]');
   if (kebab) {
     const menu = kebab.nextElementSibling, willOpen = menu.hidden;
@@ -541,7 +551,9 @@ function renderBoardProposal(proposal, baseVersion = null) {
     ${metricChange('Перекос, %', b0.imbalance_pct, b1.imbalance_pct)} ·
     ${metricChange('Ток ввода, A', b0.incomer_md_a, b1.incomer_md_a)}
   </div>`;
-  $('boardProposalIdentity').textContent = `${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`;
+  // review fix: this was the one identity line in the app with no gloss at all — normIdentity/
+  // importIdentity/sharedIdentity/print all run through humanizeSections already.
+  $('boardProposalIdentity').textContent = humanizeSections(`${proposal.diff.data_identity} ${proposal.diff.signoff_notice} ${proposal.diff.disclaimer}`);
 }
 async function sendBoardCopilot() {
   const input = $('boardCopilotInput'), message = input.value.trim();
@@ -554,10 +566,10 @@ async function sendBoardCopilot() {
     busy.remove();
     boardCopilotMessage('bot', response.reply, response.model ? `модель: ${response.model}` : '');
     BOARD_COPILOT_HISTORY.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply });
-    if (!response.provenance_ok) boardCopilotMessage('bot', `Числа в ответе не прошли проверку провенанса: ${response.unverified_numbers.join(', ')}. Предложение и расчёт не изменены.`);
-    if (response.error) boardCopilotMessage('bot', `Запрос не завершён: ${response.error}.`);
+    if (!response.provenance_ok) boardCopilotMessage('bot error', `Числа в ответе не прошли проверку провенанса: ${response.unverified_numbers.join(', ')}. Предложение и расчёт не изменены.`);
+    if (response.error) boardCopilotMessage('bot error', `Запрос не завершён: ${response.error}.`);
     renderBoardProposal(response.proposal, baseVersion);
-  } catch (error) { busy.remove(); boardCopilotMessage('bot', 'Ошибка: ' + error.message); }
+  } catch (error) { busy.remove(); boardCopilotMessage('bot error', 'Ошибка: ' + error.message); }
 }
 function applyBoardProposal() {
   if (!BOARD_PROPOSAL || !PROJ) return;
@@ -641,6 +653,22 @@ function applyNormMarkers(findings) {
     tr.querySelector('td')?.appendChild(marker);
   });
 }
+// review fix: some finding.detail strings are a server-side provenance dump — the same
+// origin=/missing reason repeated once per untrusted data section (10+ sections × 4-5 reasons
+// each, comma-joined into one sentence). Detect that shape and fold everything from the dump's
+// opening colon onward into a collapsed <details> — the short lead-in sentence stays visible,
+// the raw enumeration is one click away, styled like the audit-trace tokens (.step).
+function splitProvenanceDetail(detail) {
+  const text = String(detail ?? '');
+  const dumpStart = text.search(/origin=|\bmissing\b/);
+  if (dumpStart === -1) return null;
+  const cut = text.lastIndexOf(':', dumpStart);
+  if (cut === -1) return null;
+  const head = text.slice(0, cut + 1).trim();
+  const rest = text.slice(cut + 1).trim();
+  if (!head || !rest) return null;
+  return { head, rest };
+}
 function renderNormcheck(rep) {
   NORMCHECK = rep;
   const s = rep.summary;
@@ -649,9 +677,13 @@ function renderNormcheck(rep) {
     const unchecked = f.status === 'not_checked';
     const label = unchecked ? 'не проверено' : sevLabel(f.severity);
     const open = f.circuit_id ? `<button class="ghost norm-open" data-norm-cid="${esc(f.circuit_id)}">${esc(f.circuit_ref || 'цепь')} →</button>` : '';
+    const prov = splitProvenanceDetail(f.detail);
+    const detailHtml = prov
+      ? `<p>${esc(prov.head)}</p><details class="norm-detail-more"><summary>подробности провенанса</summary><div class="body">${esc(prov.rest)}</div></details>`
+      : `<p>${esc(f.detail)}</p>`;
     return `<article class="norm-card ${esc(f.severity)} ${unchecked ? 'not-checked' : ''}">
       <span class="norm-sev" title="${esc(unchecked ? 'not_checked' : f.severity)}">${esc(label)}</span>
-      <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4><p>${esc(f.detail)}</p>
+      <div class="norm-main"><h4>${esc(f.rule_id)} · ${esc(f.title)}</h4>${detailHtml}
         <div class="norm-values">факт: ${esc(JSON.stringify(f.observed))}<br>требуется: ${esc(JSON.stringify(f.required))}</div>
         <div class="norm-cite">${esc(citeText(f.citation))}${citeOpenButton(f.citation)} · ${esc(f.source_section)} · ${f.source_trusted ? 'источник проверен' : 'источник требует проверки'}</div>
       </div>${open}</article>`;
@@ -749,7 +781,14 @@ function openEditor(cid) {
   fillForm(c.request, c.meta);
   $('edRef').textContent = c.ref || '(без ref)';
   setSignoffBadge(c.signoff);
+  updateEditorNav();
   recompute();
+}
+// review fix: ‹пред/след› stayed enabled (and clickable, no-op) past the first/last circuit.
+function updateEditorNav() {
+  const i = PROJ.circuits.findIndex(x => x.id === CID);
+  $('btnPrev').disabled = i <= 0;
+  $('btnNext').disabled = i === -1 || i >= PROJ.circuits.length - 1;
 }
 function setSignoffBadge(so) {
   const el = $('edSignoff'); const signed = so?.status === 'SIGNED';
@@ -836,7 +875,7 @@ document.querySelectorAll('#f_desc,#f_ref,#f_power,#f_current,#f_voltage,#f_phas
 // ---------- charts (Plotly/SVG) ----------
 // design-v2-spec §3: Plotly can't consume CSS custom properties directly, so these mirror the
 // :root tokens in styles.css by value — keep them in sync if the palette ever changes there.
-const T = { navy: '#24407A', navySoft: 'rgba(36,64,122,.12)', burgundy: '#7E2440', ink: '#1C2536', dim: '#5A6478', faint: '#8B93A5', ok: '#2E7D4F', okMuted: 'rgba(46,125,79,.55)', warn: '#A9701E', bad: '#C8321F', grid: '#ECE9E1', notPassing: '#D8D3C7' };
+const T = { navy: '#24407A', navySoft: 'rgba(36,64,122,.12)', burgundy: '#7E2440', ink: '#1C2536', dim: '#5A6478', faint: '#8B93A5', ok: '#2E7D4F', okMuted: 'rgba(46,125,79,.55)', warn: '#8A5A16', bad: '#C8321F', grid: '#ECE9E1', notPassing: '#D8D3C7' };
 const BASE = { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { color: T.dim, size: 12, family: "'IBM Plex Sans', -apple-system, sans-serif" }, margin: { l: 60, r: 18, t: 46, b: 70 }, legend: { orientation: 'h', y: -0.22, yanchor: 'top', x: 0 }, showlegend: true };
 const CFG = { responsive: true, displayModeBar: false };
 function vlines(shapes, x, color, dash, label, anns) { if (x == null) return; shapes.push({ type: 'line', x0: x, x1: x, yref: 'paper', y0: 0, y1: 1, line: { color, width: 1.5, dash } }); anns.push({ x: Math.log10(x), y: 1, yref: 'paper', text: label, showarrow: false, font: { color, size: 11 }, xanchor: 'left', yanchor: 'bottom' }); }
@@ -913,18 +952,18 @@ $('rtabs').addEventListener('click', e => {
 function addMsg(cls, html, sub) { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html + (sub ? `<small>${esc(sub)}</small>` : ''); $('chat').appendChild(d); $('chat').scrollTop = $('chat').scrollHeight; }
 async function chatSend() {
   const text = $('chatInput').value.trim(); if (!text) return; addMsg('user', esc(text)); $('chatInput').value = ''; addMsg('bot', 'разбираю…'); const busy = $('chat').lastChild;
-  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${esc(deviceText(p.device_class))} <b>${fmt(p.In_a)} A</b>, статус <b>${esc(stLabel(VIZ.result.overall_status))}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  try { const j = await postJSON('/api/intake', { text }); busy.remove(); if (!j.ok) { addMsg('bot error', '' + esc(j.message || 'не удалось')); return; } fillForm(j.request, buildMeta()); await recompute(); const c = VIZ.result.selected_cable, p = VIZ.result.selected_protection; addMsg('bot', `Разобрал: <b>${fmt(c.cross_section_mm2)} мм²</b>, ${esc(deviceText(p.device_class))} <b>${fmt(p.In_a)} A</b>, статус <b>${esc(stLabel(VIZ.result.overall_status))}</b>. Нажми «Сохранить в щит».`, 'модель: ' + (j.model || '')); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 async function doExplain() {
   addMsg('bot', 'объясняю…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/explain' + packQuery(), buildRequest()); busy.remove(); const n = j.narrative; const tag = n.model ? `${n.model}; провенанс ${n.provenance_ok ? 'OK' : 'FAIL ' + JSON.stringify(n.unverified_numbers)}` : 'шаблон (без ключа)'; addMsg('bot', esc(n.text), tag); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 async function doReview() {
   addMsg('bot', 'ревьюер проверяет…'); const busy = $('chat').lastChild;
   try { const j = await postJSON('/api/verify' + packQuery(), buildRequest()); busy.remove(); const v = j.verdict; const bad = !v.agrees || !v.deterministic_ok; const issues = (v.issues || []).length ? '<br>' + v.issues.map(esc).join('<br>') : ''; addMsg('rev' + (bad ? ' bad' : ''), `Ревьюер: детерм. <b style="color:var(--${v.deterministic_ok ? 'ok' : 'bad'})">${v.deterministic_ok ? 'OK' : 'FAIL'}</b>, LLM ${v.agrees ? 'согласен' : 'НЕ согласен'}${issues}`, v.model ? 'модель: ' + v.model : 'детерминированно'); }
-  catch (e) { busy.remove(); addMsg('bot', '' + esc(e.message)); }
+  catch (e) { busy.remove(); addMsg('bot error', '' + esc(e.message)); }
 }
 $('chatSend').addEventListener('click', chatSend);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) chatSend(); });
