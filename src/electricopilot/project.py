@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .calculation_manifest import build_calculation_manifest, manifest_data_identity
-from .data.loader import DataPack, load_data_pack
+from .data.loader import DataPack, load_pack_by_name
 from .engine import size
 from .models import DISCLAIMER, SizingRequest, SizingResult, provenance_note_for
 from .project_contract import ProjectInput, project_payload
@@ -45,7 +45,7 @@ def build_project_calculation_snapshot(
 ) -> ProjectCalculationSnapshot:
     """Validate and size every circuit once; never reuse a client-side snapshot."""
     data = project_payload(project)
-    pack = data_pack or load_data_pack(data.get("norm_pack"))
+    pack = data_pack or load_pack_by_name(data.get("norm_pack"))
     topology = validate_project_topology(data)
     circuit_results = tuple(
         size(circuit_topology.request, data_pack=pack)

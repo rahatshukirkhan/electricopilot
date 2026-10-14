@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any, Callable, Protocol
 
-from ..data.loader import load_data_pack
+from ..data.loader import load_pack_by_name
 from ..exceptions import LlmConfigError, LlmError
 from ..llm.intake import intake_parse
 from ..project import build_project_report
@@ -147,7 +147,7 @@ def run_copilot(
     """Run a bounded tool loop and return a proposal without mutating the input project."""
     started = clock()
     canonical = validate_project(project)
-    pack = load_data_pack(canonical.norm_pack)
+    pack = load_pack_by_name(canonical.norm_pack)
     # The fresh board state ships up-front as context: a slow reasoning turn spent on a
     # get_board_state round-trip was costing 1-2 of the loop's few iterations on every
     # real request. The payload doubles as baseline provenance evidence.

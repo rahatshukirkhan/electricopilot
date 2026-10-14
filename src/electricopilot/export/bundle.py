@@ -17,7 +17,7 @@ from ..calculation_manifest import (
     canonical_pack_payload,
     effective_project_input,
 )
-from ..data.loader import DataPack, load_data_pack
+from ..data.loader import DataPack, load_pack_by_name
 from ..project import build_project_report
 from ..project_contract import ProjectInput, project_payload, validate_project
 from .boq import build_boq
@@ -33,7 +33,7 @@ _FIXED_DATE = (2020, 1, 1, 0, 0, 0)  # reproducible zip entries (no wall-clock)
 def build_bundle(project: ProjectInput, *, data_pack: Optional[DataPack] = None) -> bytes:
     canonical = validate_project(project)
     payload = project_payload(canonical)
-    pack = data_pack or load_data_pack(canonical.norm_pack)
+    pack = data_pack or load_pack_by_name(canonical.norm_pack)
     report = build_project_report(canonical, data_pack=pack)
     manifest = CalculationManifest.model_validate(report["calculation_manifest"])
     sheets = build_sld(canonical, report)

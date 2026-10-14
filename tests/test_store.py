@@ -19,6 +19,7 @@ from electricopilot.store import (
     PostgresStore,
     ProjectConflictError,
     ProjectNotFoundError,
+    ProjectStoreNotInitializedError,
 )
 
 
@@ -192,3 +193,42 @@ def test_frontend_contract_is_local_first_debounced_and_read_only() -> None:
     assert "#/s/" in app_js or "'/s/'" in app_js
     assert 'id="screen-shared"' in html
     assert 'id="btnShare"' in html
+
+
+def test_health_reports_local_when_the_schema_was_never_created(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Найдено аудитом 29.07.2026: в проде DSN был задан, а таблиц не существовало —
+    health рапортовал `neon`, фронт включал синхронизацию, и каждый PUT падал в 500."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pw@localhost/absent")
+    monkeypatch.setattr(studio_api, "_PROJECT_STORE_OVERRIDE", None)
+    monkeypatch.setattr(PostgresStore, "schema_ready", lambda self: False)
+
+    payload = TestClient(studio_api.app).get("/api/health").json()
+
+    assert payload["project_store"] == "local"
+
+    monkeypatch.setattr(PostgresStore, "schema_ready", lambda self: True)
+    ready = TestClient(studio_api.app).get("/api/health").json()
+    assert ready["project_store"] == "neon"
+
+
+def test_missing_schema_is_a_typed_503_not_a_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Uninitialized:
+        def list(self, workspace: str) -> list[Any]:
+            raise ProjectStoreNotInitializedError('relation "projects" does not exist')
+
+    monkeypatch.setattr(studio_api, "_PROJECT_STORE_OVERRIDE", _Uninitialized())
+    client = TestClient(studio_api.app, raise_server_exceptions=False)
+
+    response = client.get("/api/projects", headers=_headers())
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["error"] == "project_store_not_initialized"
+
+
+def test_connections_are_bounded_so_an_unreachable_database_fails_fast() -> None:
+    source = inspect.getsource(PostgresStore)
+
+    assert "connect_timeout=self._connect_timeout" in source
+    assert "psycopg.connect(self._dsn)" not in source  # каждый вызов идёт через _connect()

@@ -11,12 +11,14 @@ import json
 import os
 import re
 import unicodedata
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from electricopilot.exceptions import ElectriCopilotError
+from electricopilot.store import CONNECT_TIMEOUT_SECONDS
 from electricopilot.norms.parse import (
     LinkEdge,
     NormDocument,
@@ -456,15 +458,23 @@ class JsonNormStore:
 class PostgresNormStore:
     """Neon/Postgres backend; every operation uses one short connection."""
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, *, connect_timeout: int = CONNECT_TIMEOUT_SECONDS) -> None:
         if not dsn.strip():
             raise ValueError("Postgres DSN must not be empty")
         self._dsn = dsn
+        self._connect_timeout = connect_timeout
 
-    def init_schema(self) -> None:
+    @contextmanager
+    def _connect(self) -> Iterator[Any]:
+        """Bounded connection. The norm API is public and unthrottled, so an unreachable
+        Neon must fail fast instead of holding the function open to `maxDuration`."""
         import psycopg
 
-        with psycopg.connect(self._dsn) as conn:
+        with psycopg.connect(self._dsn, connect_timeout=self._connect_timeout) as conn:
+            yield conn
+
+    def init_schema(self) -> None:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(NORM_STORE_DDL)
             conn.commit()
@@ -479,12 +489,11 @@ class PostgresNormStore:
         discipline: str,
         fetched_at: datetime | None = None,
     ) -> UpsertOutcome:
-        import psycopg
         from psycopg.types.json import Jsonb
 
         kept = storable_sections(sections)
         stamp = fetched_at or _utc_now()
-        with psycopg.connect(self._dsn) as conn:
+        with self._connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     "SELECT content_sha256 FROM norm_documents WHERE id = %s FOR UPDATE",
@@ -551,24 +560,18 @@ class PostgresNormStore:
     )
 
     def list_documents(self) -> list[DocumentRecord]:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(f"{self._SELECT} ORDER BY d.id")
             return [self._record(row) for row in cursor.fetchall()]
 
     def get_document(self, doc_id: str) -> DocumentRecord | None:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(f"{self._SELECT} WHERE d.id = %s", (doc_id,))
             row = cursor.fetchone()
             return self._record(row) if row else None
 
     def list_sections(self, doc_id: str) -> list[NormSection]:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT anchor, ordinal, breadcrumb, heading, body, has_table "
                 "FROM norm_sections WHERE doc_id = %s ORDER BY ordinal",
@@ -581,9 +584,7 @@ class PostgresNormStore:
             ]
 
     def get_section(self, doc_id: str, anchor: str) -> NormSection | None:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT anchor, ordinal, breadcrumb, heading, body, has_table "
                 "FROM norm_sections WHERE doc_id = %s AND anchor = %s",
@@ -613,9 +614,7 @@ class PostgresNormStore:
         Отдельные соединения на каждый запрос стоили по ~0.8 с к Neon: четыре round-trip
         превращали открытие главы в четыре секунды ожидания.
         """
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM norm_sections WHERE doc_id = %s", (doc_id,))
             row = cursor.fetchone()
             total = int(row[0]) if row else 0
@@ -648,9 +647,7 @@ class PostgresNormStore:
         return ReadingView(headings=headings, page=page, offset=offset, total=total)
 
     def links_from(self, doc_id: str) -> list[LinkEdge]:
-        import psycopg
-
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT to_doc, anchor FROM norm_links WHERE from_doc = %s "
                 "ORDER BY to_doc, anchor",
@@ -688,11 +685,9 @@ class PostgresNormStore:
         include_repealed: bool = False,
     ) -> list[SearchHit]:
         """docs/20 §6, authoritative implementation: russian FTS with density ranking."""
-        import psycopg
-
         if not query.strip():
             return []
-        with psycopg.connect(self._dsn) as conn, conn.cursor() as cursor:
+        with self._connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 self._SEARCH_SQL,
                 {

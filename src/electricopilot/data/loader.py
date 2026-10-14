@@ -386,6 +386,31 @@ def load_data_pack(path: str | Path | None = None) -> DataPack:
         raise DataPackError(f"failed to load data pack from {path}: {exc}") from exc
 
 
+def load_pack_by_name(name: str | None) -> DataPack:
+    """Resolve a pack from UNTRUSTED input: bundled names only, never a filesystem path.
+
+    `load_data_pack` accepts a path on purpose (docs/12 §1.1) — that is a CLI/скрипт
+    affordance. Reaching it from an HTTP parameter turned `?pack=` / `project.norm_pack`
+    into an arbitrary-file read (`Path(path).read_text()`), which leaked file existence and
+    truncated content through the 400 body and let `/dev/zero` exhaust the worker's memory.
+    Every path that carries a user-supplied pack name goes through THIS function; the name
+    must be one `list_packs()` actually offers.
+    """
+    if name is None:
+        return _load_pack_by_name(DEFAULT_PACK_NAME)
+    if name not in _bundled_pack_names():
+        # The rejected value is never echoed back: it is attacker-controlled text.
+        raise DataPackError("unknown norm pack; use one of the bundled packs (see /api/packs)")
+    return _load_pack_by_name(name)
+
+
+@lru_cache(maxsize=1)
+def _bundled_pack_names() -> frozenset[str]:
+    """Bundled pack names, cached for the process — packs ship with the package and cannot
+    change at runtime, and this set is consulted on every public request."""
+    return frozenset(meta.name for meta in list_packs())
+
+
 def list_packs() -> list[DataPackMeta]:
     """Enumerate bundled packs in data/packs/ (docs/12 §1.1), for GET /api/packs and CLI."""
     try:
