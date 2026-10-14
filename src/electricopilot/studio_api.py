@@ -172,6 +172,17 @@ def _admit_llm(request: Request) -> None:
         raise rejected(rejection)
 
 
+def _optional_llm_client(request: Request) -> OpenRouterClient | None:
+    """Non-raising admission check for endpoints where the LLM only adds an optional
+    extra (a narrative, a rerank, a smarter header mapping) on top of an ALREADY complete
+    deterministic result. An admission rejection here (docs/19, e.g. a fail-closed
+    llm_admission_mode="disabled" with a key present) must degrade to the same no-LLM
+    behaviour these endpoints already have, not take down the deterministic core."""
+    if admission.admit_llm(request, get_config()) is not None:
+        return None
+    return _client()
+
+
 @contextmanager
 def _heavy_operation() -> Any:
     """Bound one process's costly calculations; Vercel perimeter remains separate."""
@@ -222,7 +233,10 @@ def health() -> dict[str, str]:
     cfg = get_config()
     return {"status": "ok", "mode": "live" if cfg.llm_available else "fallback",
             "model_fast": cfg.model_fast, "model_strong": cfg.model_strong,
-            "project_store": _project_store_mode()}
+            "project_store": _project_store_mode(),
+            # Contract for the frontend (docs/19): a missing field means an old server that
+            # cannot be assumed fail-closed or fail-open either way. No counters/telemetry here.
+            "llm_admission": cfg.llm_admission_mode}
 
 
 @app.get("/api/packs")
@@ -379,8 +393,9 @@ def copilot_endpoint(body: CopilotRequest, request: Request) -> dict[str, Any]:
         body.message,
         body.history,
         client=_client(),
-        model=cfg.model_strong,
+        model=getattr(cfg, "model_copilot", "") or cfg.model_fast,
         parse_model=cfg.model_fast,
+        attachments=body.attachments,
     )
     payload = response.model_dump(mode="json")
     if response.error in {"invalid_tool", "invalid_proposal"}:
@@ -558,20 +573,26 @@ def project_validate_endpoint(body: ProjectBody) -> dict[str, dict[str, Any]]:
 
 @app.post("/api/normcheck")
 def normcheck_endpoint(body: ProjectBody, request: Request) -> dict[str, Any]:
-    """Run deterministic R01-R10 over fresh server-side board calculations (docs/14)."""
+    """Run deterministic R01-R10 over fresh server-side board calculations (docs/14).
+
+    The LLM narrative is optional garnish on an already-complete deterministic report:
+    an admission rejection (docs/19) must not take the whole endpoint down with it — it
+    just means the response comes back without a narrative, same as no key configured.
+    """
     pack = _pack_or_400(body.project.norm_pack)
     with _heavy_operation():
         report = _catch_project_error(build_normcheck_report, body.project, pack)
     cfg = get_config()
     if cfg.llm_available:
-        _admit_llm(request)
-        try:
-            narrative = narrate_findings(
-                report.findings, report.summary, _client(), model=cfg.model_fast,
-            )
-            report = report.model_copy(update={"narrative": narrative})
-        except (LlmConfigError, LlmError):
-            pass
+        client = _optional_llm_client(request)
+        if client is not None:
+            try:
+                narrative = narrate_findings(
+                    report.findings, report.summary, client, model=cfg.model_fast,
+                )
+                report = report.model_copy(update={"narrative": narrative})
+            except (LlmConfigError, LlmError):
+                pass
     return report.model_dump()  # type: ignore[no-any-return]
 
 
@@ -603,8 +624,12 @@ async def import_schedule_endpoint(
         manual_mapping = parsed_mapping
     pack = _pack_or_400(norm_pack)
     cfg = get_config()
+    # LLM header mapping is a best-effort merge over the heuristic mapping (docs/14 §8);
+    # an admission rejection degrades to the same heuristic-only path as no key configured,
+    # rather than 503-ing an import the deterministic parser already handled.
+    llm_client: OpenRouterClient | None = None
     if cfg.llm_available and manual_mapping is None:
-        _admit_llm(request)
+        llm_client = _optional_llm_client(request)
     try:
         with _heavy_operation():
             result = import_schedule(
@@ -613,8 +638,8 @@ async def import_schedule_endpoint(
                 pack=pack,
                 manual_mapping=manual_mapping,
                 confirmed=confirmed,
-                llm_client=_client() if cfg.llm_available and manual_mapping is None else None,
-                llm_model=cfg.model_fast if cfg.llm_available else None,
+                llm_client=llm_client,
+                llm_model=cfg.model_fast if llm_client is not None else None,
             )
     except ScheduleImportError as exc:
         raise HTTPException(
@@ -859,8 +884,10 @@ def norms_search_endpoint(body: NormSearchBody, request: Request) -> dict[str, A
     cfg = get_config()
     client: OpenRouterClient | None = None
     if cfg.norms_llm_rerank and cfg.llm_available:
-        _admit_llm(request)
-        client = _client()
+        # Rerank is an optional reordering of an already-complete lexical result (docs/20
+        # §6): an admission rejection just leaves the deterministic lexical order in place,
+        # exactly like an invalid rerank response already does — never a 503 for a search.
+        client = _optional_llm_client(request)
     with _heavy_operation():
         hits = search_norms(
             _norm_store(),

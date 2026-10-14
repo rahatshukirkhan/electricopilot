@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "env": { "ELECTRICOPILOT_LLM_ADMISSION_MODE": "local" },
   "builds": [
     { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": "src/**", "maxDuration": 60 } },
     { "src": "web/**", "use": "@vercel/static" }

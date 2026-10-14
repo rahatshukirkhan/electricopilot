@@ -10,13 +10,15 @@ from xml.sax.saxutils import escape
 
 from .primitives import Circle, Drawing, Line, Polyline, Rect, Text
 
-# Layer → stroke colour for on-screen / print SVG.
+# Layer → stroke colour for on-screen / print SVG (design-v2-spec §3: server SLD outlines are
+# navy; TEXT is unused in practice — Text primitives carry their own .color, see primitives.py —
+# but kept consistent with --ink in case that ever changes).
 _LAYER_STROKE = {
-    "FRAME": "#5b6b86",
-    "BUS": "#2f6df6",
-    "WIRES": "#7c8aa5",
-    "SYMBOLS": "#0b1220",
-    "TEXT": "#0b1220",
+    "FRAME": "#24407A",    # --navy
+    "BUS": "#24407A",      # --navy
+    "WIRES": "#8B93A5",    # --faint (fallback only; circuit wires are normally status-coloured)
+    "SYMBOLS": "#24407A",  # --navy
+    "TEXT": "#1C2536",     # --ink
 }
 
 

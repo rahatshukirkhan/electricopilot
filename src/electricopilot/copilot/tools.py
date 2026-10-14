@@ -103,6 +103,49 @@ class CopilotToolError(ValueError):
         self.code = code
 
 
+# Field-name -> electrician-facing Russian label, used only to humanize pydantic ValidationErrors
+# below (docs review: raw `str(ValidationError)` dumps — "7 validation errors for SizingRequest",
+# dotted Python field paths, https://errors.pydantic.dev links — must never reach the Copilot chat).
+_FIELD_LABELS_RU: dict[str, str] = {
+    "method": "метод прокладки", "material": "материал жилы", "insulation": "изоляция",
+    "ambient_temp_c": "температура окружающей среды", "grouping_circuits": "группировка цепей",
+    "length_m": "длина кабеля", "device_class": "класс аппарата", "trip_curve_type": "характеристика расцепителя",
+    "voltage_v": "напряжение", "phases": "число фаз", "power_factor": "cosφ", "purpose": "назначение",
+    "power_w": "мощность (Вт)", "current_a": "ток (А)", "description": "описание цепи",
+    "prospective_fault_current_a": "ток КЗ", "disconnection_time_s": "время отключения",
+    "max_voltage_drop_pct": "предел ΔU", "circuit_id": "идентификатор цепи", "ref": "обозначение цепи",
+}
+
+
+def _humanize_validation_error(exc: ValidationError, *, limit: int = 4) -> str:
+    """Turn a pydantic ValidationError into one short Russian sentence an electrician can act on —
+    no dotted field paths, no per-error boilerplate, no errors.pydantic.dev links."""
+    parts: list[str] = []
+    seen: set[str] = set()
+    errors = exc.errors()
+    for err in errors:
+        loc = [str(p) for p in err.get("loc", ()) if not isinstance(p, int)]
+        field = loc[-1] if loc else ""
+        label = _FIELD_LABELS_RU.get(field, field or "параметр")
+        if label in seen:
+            continue
+        seen.add(label)
+        kind = err.get("type", "")
+        if kind == "missing":
+            parts.append(f"не указан(о) «{label}»")
+        elif kind == "literal_error":
+            allowed = err.get("ctx", {}).get("expected", "")
+            parts.append(f"«{label}»: недопустимое значение" + (f" (ожидается {allowed})" if allowed else ""))
+        else:
+            parts.append(f"«{label}»: значение не проходит проверку")
+        if len(parts) >= limit:
+            break
+    extra = len(errors) - len(parts)
+    tail = f" и ещё {extra} парам." if extra > 0 else ""
+    joined = "; ".join(parts) if parts else "переданные параметры не проходят проверку"
+    return f"Не удалось применить: уточни {joined}{tail}."
+
+
 def _next_id(used: set[str]) -> str:
     index = 1
     while f"copilot-{index}" in used:
@@ -114,7 +157,7 @@ def _normalize_operations(raw_ops: Any, project: Project) -> list[ProposalOperat
     try:
         operations = OPERATIONS_ADAPTER.validate_python(raw_ops)
     except ValidationError as exc:
-        raise CopilotToolError("invalid_proposal", str(exc)) from None
+        raise CopilotToolError("invalid_proposal", _humanize_validation_error(exc)) from None
     if not operations:
         raise CopilotToolError("invalid_proposal", "proposal requires at least one operation")
     if len(operations) > project.supply.ways_total * 2:
@@ -190,7 +233,9 @@ def _apply_operations(project: Project, operations: list[ProposalOperation]) -> 
     try:
         candidate = validate_project(payload)
         validate_project_topology(candidate.model_dump(mode="json"))
-    except (ProjectContractError, ProjectTopologyError, ValueError, ValidationError) as exc:
+    except ValidationError as exc:
+        raise CopilotToolError("invalid_proposal", _humanize_validation_error(exc)) from None
+    except (ProjectContractError, ProjectTopologyError, ValueError) as exc:
         raise CopilotToolError("invalid_proposal", str(exc)) from None
     return candidate
 
@@ -309,11 +354,23 @@ def _collect_numbers(value: Any, found: set[float]) -> None:
 
 
 def check_reply_provenance(text: str, evidence: list[Any]) -> tuple[bool, list[str]]:
-    """Allow only numbers present as typed leaves of deterministic tool evidence."""
+    """Allow only numbers present as typed leaves of deterministic tool evidence.
+
+    A one-way \u00d71000 scale equivalence is accepted alongside the exact value: evidence
+    stores power_w=3600 and rcd ma=30, while an electrician-facing reply naturally says
+    \u00ab3,6 \u043a\u0412\u0442\u00bb or \u00ab0,03 \u0410\u00bb. Only reply-in-the-larger-unit is forgiven (token*1000 traces
+    to a leaf); the \u00f71000 direction is deliberately NOT allowed \u2014 with the absolute
+    0.05 tolerance floor it would let any ~N*1000 token ride on small leaves like
+    power_factor=1.0. Arbitrary numbers remain flagged.
+    """
     allowed: set[float] = set()
     _collect_numbers(evidence, allowed)
     cleaned = _CITATION.sub(" ", _RULE.sub(" ", text))
     unverified: list[str] = []
+
+    def matches(value: float) -> bool:
+        return any(abs(value - item) <= max(0.05, 0.01 * abs(item)) for item in allowed)
+
     for token in dict.fromkeys(_NUMBER.findall(cleaned)):
         value = float(
             token.replace(" ", "")
@@ -322,7 +379,7 @@ def check_reply_provenance(text: str, evidence: list[Any]) -> tuple[bool, list[s
             .replace("\u202f", "")
             .replace(",", ".")
         )
-        if not any(abs(value - item) <= max(0.05, 0.01 * abs(item)) for item in allowed):
+        if not (matches(value) or matches(value * 1000)):
             unverified.append(token)
     return not unverified, unverified
 
@@ -373,6 +430,8 @@ def execute_tool(
             return payload, proposal, [report_tool_payload(before), report_tool_payload(after), payload]
     except CopilotToolError:
         raise
-    except (ValidationError, ValueError) as exc:
+    except ValidationError as exc:
+        raise CopilotToolError("invalid_tool", _humanize_validation_error(exc)) from None
+    except ValueError as exc:
         raise CopilotToolError("invalid_tool", str(exc)) from None
     raise CopilotToolError("invalid_tool", f"unknown tool: {name}")

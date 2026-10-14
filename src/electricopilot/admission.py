@@ -69,7 +69,8 @@ class AdmissionController:
             self._event("llm_admission_disabled")
             return AdmissionRejection(
                 503, "llm_admission_not_configured",
-                "Живой ИИ временно отключён: защита публичного лимита ещё не подтверждена.",
+                "ИИ-помощник на этом сервере отключён. Расчёт, нормоконтроль и экспорт "
+                "работают полностью.",
             )
         if mode != "local":
             self._event("llm_admission_unknown_mode")

@@ -62,11 +62,11 @@ _SVG_SNAPSHOT = (
     'viewBox="0 0 100 50" fill="none">\n'
     '<rect x="0" y="0" width="100" height="50" fill="#ffffff"/>\n'
     '<line x1="0" y1="0" x2="10" y2="10" stroke="#1f9d55" stroke-width="0.25"/>\n'
-    '<rect x="5" y="5" width="20" height="10" stroke="#5b6b86" stroke-width="0.25" fill="none"/>\n'
-    '<circle cx="30" cy="20" r="3" stroke="#0b1220" stroke-width="0.25" fill="none"/>\n'
-    '<polygon points="0,0 5,0 2.5,5" stroke="#0b1220" stroke-width="0.25" fill="#0b1220"/>\n'
+    '<rect x="5" y="5" width="20" height="10" stroke="#24407A" stroke-width="0.25" fill="none"/>\n'
+    '<circle cx="30" cy="20" r="3" stroke="#24407A" stroke-width="0.25" fill="none"/>\n'
+    '<polygon points="0,0 5,0 2.5,5" stroke="#24407A" stroke-width="0.25" fill="#24407A"/>\n'
     '<text x="10" y="20" font-size="2.5" font-family="Helvetica, Arial, sans-serif" '
-    'fill="#0b1220" text-anchor="middle" transform="rotate(-90 10 20)">QF &lt;1&gt;</text>\n'
+    'fill="#1C2536" text-anchor="middle" transform="rotate(-90 10 20)">QF &lt;1&gt;</text>\n'
     '</svg>'
 )
 
@@ -99,6 +99,20 @@ def test_sld_svg_has_key_content():
     svg = svgs[0]
     for token in ["L1", "L2", "L3", "Розетки кухни", "Ввод", "Однолинейная", "REVIEW"]:
         assert token in svg, token
+
+
+def test_sld_footer_glosses_raw_provenance_codes_in_russian():
+    """design-v2-spec §3 'заодно': the diagram caption reads in Russian, not raw enum codes —
+    but the raw code stays put right next to its gloss, since tests/test_export.py's
+    cross-surface consistency check (below) greps for the literal code on every document
+    surface."""
+    board = _board()
+    report = build_project_report(board)
+    assert "illustrative" in report["data_identity"]  # precondition: iec-stub is illustrative
+    assert "NEEDS_REVIEW" in report["data_identity"]
+    svg = sld_sheets_svg(board, report)[0]
+    assert "illustrative — синтетические (демо)" in svg
+    assert "NEEDS_REVIEW — требует проверки" in svg
 
 
 def test_sld_splits_into_sheets_over_16():

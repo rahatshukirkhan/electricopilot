@@ -9,9 +9,12 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 from electricopilot import studio_api
 from electricopilot.copilot import run_copilot
-from electricopilot.copilot.tools import build_proposal
+from electricopilot.copilot.models import CopilotRequest
+from electricopilot.copilot.tools import build_proposal, check_reply_provenance
 from electricopilot.config import Config
 from electricopilot.data.loader import load_data_pack
 from electricopilot.engine import size
@@ -192,14 +195,51 @@ def test_board_state_exposes_inputs_but_not_snapshots_or_import_evidence() -> No
     assert "import_declaration" not in circuit["meta"]
 
 
-def test_unknown_circuit_is_a_structured_invalid_proposal() -> None:
-    result = _run(_project(), ScriptedClient([_tool_turn(
-        "propose_changes",
-        {"ops": [{"op": "delete", "circuit_id": "missing"}]},
-    )]))
+def test_validation_error_feeds_back_to_the_model_instead_of_aborting() -> None:
+    client = ScriptedClient([
+        _tool_turn("propose_changes", {"ops": [{"op": "delete", "circuit_id": "missing"}]}),
+        _tool_turn(
+            "propose_changes",
+            {"ops": [{"op": "add", "ref": "M2", "request": _request()}]},
+            content="Исправил: добавляю новую цепь.",
+        ),
+    ])
 
-    assert not result.ok and result.error == "invalid_proposal"
+    result = _run(_project(), client)
+
+    assert result.ok and result.proposal is not None
+    assert client.calls == 2
+    error_result = next(
+        item for item in client.seen_messages[1]
+        if item["role"] == "tool" and item["name"] == "propose_changes"
+    )
+    feedback = json.loads(error_result["content"])
+    assert feedback["ok"] is False and feedback["error"] == "invalid_proposal"
+
+
+def test_unrecovered_validation_error_ends_as_iteration_limit_with_diagnostics() -> None:
+    bad_turn = _tool_turn(
+        "propose_changes", {"ops": [{"op": "delete", "circuit_id": "missing"}]},
+    )
+    result = _run(_project(), ScriptedClient([deepcopy(bad_turn) for _ in range(8)]))
+
+    assert not result.ok and result.error == "iteration_limit"
     assert result.proposal is None
+    assert "Последняя ошибка инструмента" in result.reply
+
+
+def test_board_state_is_preinjected_as_system_context() -> None:
+    client = ScriptedClient([{"content": "ок", "tool_calls": []}])
+
+    _run(_project(with_circuit=True), client)
+
+    first_turn = client.seen_messages[0]
+    assert first_turn[0]["role"] == "system" and first_turn[1]["role"] == "system"
+    state_message = first_turn[1]["content"]
+    assert "Текущее состояние щита" in state_message
+    state = json.loads(state_message.split("\n", 1)[1])
+    assert state["project"]["circuits"][0]["request"]["installation"]["length_m"] == 18
+    assert "result" not in state["project"]["circuits"][0]
 
 
 def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None:
@@ -209,7 +249,7 @@ def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None
     ]))
     assert explained.ok and explained.provenance_ok and explained.proposal is None
 
-    repeated = [_tool_turn("get_board_state", {}) for _ in range(6)]
+    repeated = [_tool_turn("get_board_state", {}) for _ in range(8)]
     limited = _run(_project(), ScriptedClient(repeated))
     assert limited.error == "iteration_limit" and limited.incomplete
 
@@ -223,6 +263,68 @@ def test_normcheck_explanation_iteration_limit_timeout_and_model_error() -> None
 
     broken = _run(_project(), ScriptedClient([]))
     assert broken.error == "model_error" and broken.proposal is None
+
+
+_PLAN_IMAGE = "data:image/jpeg;base64,QUJDRA=="
+_PLAN_PDF = "data:application/pdf;base64,QUJDRA=="
+
+
+def test_attached_plans_become_multimodal_user_parts() -> None:
+    client = ScriptedClient([{"content": "Распознал кухню и санузел.", "tool_calls": []}])
+
+    result = run_copilot(
+        _project(),
+        "составь цепи по плану",
+        [],
+        client=client,
+        model="fake/strong",
+        parse_model="fake/fast",
+        attachments=[_PLAN_IMAGE, _PLAN_PDF],
+    )
+
+    assert result.ok
+    user = next(item for item in client.seen_messages[0] if item["role"] == "user")
+    assert user["content"] == [
+        {"type": "text", "text": "составь цепи по плану"},
+        {"type": "image_url", "image_url": {"url": _PLAN_IMAGE}},
+        {"type": "file", "file": {"filename": "plan-2.pdf", "file_data": _PLAN_PDF}},
+    ]
+
+
+def test_no_attachments_keeps_plain_string_user_message() -> None:
+    client = ScriptedClient([{"content": "ок", "tool_calls": []}])
+
+    _run(_project(), client)
+
+    user = next(item for item in client.seen_messages[0] if item["role"] == "user")
+    assert user["content"] == "сделай изменение"
+
+
+def test_copilot_request_rejects_non_plan_or_oversized_attachments() -> None:
+    base = {"project": _project().model_dump(mode="json"), "message": "план"}
+
+    accepted = CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE, _PLAN_PDF]})
+    assert accepted.attachments == [_PLAN_IMAGE, _PLAN_PDF]
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["data:text/html;base64,QUJDRA=="]})
+    with pytest.raises(ValueError, match="PNG, JPEG, WebP или PDF"):
+        CopilotRequest.model_validate({**base, "attachments": ["https://example.com/plan.jpg"]})
+    with pytest.raises(ValueError, match="слишком большое"):
+        CopilotRequest.model_validate(
+            {**base, "attachments": ["data:image/jpeg;base64," + "A" * 1_500_001]},
+        )
+    with pytest.raises(ValueError):
+        CopilotRequest.model_validate({**base, "attachments": [_PLAN_IMAGE] * 3})
+
+
+def test_reply_provenance_accepts_si_prefix_of_evidence_leaves() -> None:
+    evidence = [{"request": {"load": {"power_w": 3600}}, "meta": {"rcd": {"ma": 30}}}]
+
+    ok, unverified = check_reply_provenance("Духовка 3,6 кВт под УЗО 30 мА (0,03 А).", evidence)
+    assert ok and unverified == []
+
+    ok, unverified = check_reply_provenance("Поставьте 5 кВт.", evidence)
+    assert not ok and unverified == ["5"]
 
 
 def test_unverified_reply_number_is_flagged_without_changing_project() -> None:
@@ -271,11 +373,47 @@ def test_api_no_key_and_frontend_keep_copilot_explicit_and_read_only(
     assert "boardCopilot" not in shared and "boardProposalApply" not in shared
 
 
-def test_api_maps_invalid_proposal_to_typed_422(monkeypatch: Any) -> None:
-    scripted = ScriptedClient([_tool_turn(
-        "propose_changes",
-        {"ops": [{"op": "delete", "circuit_id": "missing"}]},
-    )])
+def test_api_passes_attachments_to_the_copilot_loop(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run_copilot(*args: Any, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        from electricopilot.copilot.models import CopilotResponse
+        return CopilotResponse(ok=True, reply="ок", model="fake/strong")
+
+    monkeypatch.setattr(
+        studio_api,
+        "get_config",
+        lambda: SimpleNamespace(
+            llm_available=True,
+            llm_admission_mode="local",
+            model_strong="fake/strong",
+            model_fast="fake/fast",
+        ),
+    )
+    monkeypatch.setattr(studio_api, "run_copilot", fake_run_copilot)
+
+    response = TestClient(studio_api.app).post(
+        "/api/copilot",
+        json={
+            "project": _project().model_dump(mode="json"),
+            "message": "план кухни",
+            "history": [],
+            "attachments": [_PLAN_IMAGE, _PLAN_PDF],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["attachments"] == [_PLAN_IMAGE, _PLAN_PDF]
+
+
+def test_api_maps_malformed_tool_call_to_typed_422(monkeypatch: Any) -> None:
+    # Validation errors now feed back to the model (see the feedback test above); the
+    # 422 path remains for protocol violations — a tool call without an id is one.
+    scripted = ScriptedClient([{
+        "content": "",
+        "tool_calls": [{"id": "", "name": "get_board_state", "arguments": {}}],
+    }])
     monkeypatch.setattr(
         studio_api,
         "get_config",
@@ -293,7 +431,7 @@ def test_api_maps_invalid_proposal_to_typed_422(monkeypatch: Any) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"]["code"] == "invalid_proposal"
+    assert response.json()["detail"]["code"] == "invalid_tool"
     assert response.json()["detail"]["response"]["proposal"] is None
 
 
@@ -340,5 +478,58 @@ def test_openrouter_client_normalizes_function_call_without_network(monkeypatch:
     assert turn["tool_calls"] == [{
         "id": "call-7", "name": "get_board_state", "arguments": {},
     }]
-    assert captured["timeout"] == 5
+    assert captured["timeout"] == pytest.approx(7.0)
     assert captured["json"]["tool_choice"] == "auto"
+    assert captured["json"]["max_tokens"] == 8192
+    assert captured["json"]["reasoning"] == {"effort": "low"}
+
+
+def test_openrouter_client_retries_a_thinking_only_empty_turn(monkeypatch: Any) -> None:
+    """A reasoning model can spend the whole budget thinking (finish_reason=length) and
+    return neither content nor tool calls; the client must retry once, then surface a
+    diagnosable error with the finish_reason instead of a bare 'empty' message."""
+    responses: list[dict[str, Any]] = [
+        {"choices": [{"finish_reason": "length", "message": {"content": None}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": "готово"}}]},
+    ]
+    calls = {"n": 0}
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    def fake_post(*_: Any, **__: Any) -> FakeResponse:
+        payload = responses[calls["n"]]
+        calls["n"] += 1
+        return FakeResponse(payload)
+
+    monkeypatch.setattr("electricopilot.llm.client.httpx.post", fake_post)
+    config = Config(
+        openrouter_api_key="test-key",
+        openrouter_base_url="https://example.invalid/api/v1",
+        model_strong="fake/strong",
+        model_fast="fake/fast",
+        app_title="test",
+        http_referer="https://example.invalid",
+        database_url="",
+        strict_provenance=True,
+        llm_timeout=60,
+    )
+
+    turn = OpenRouterClient(config).complete_tools(
+        model="fake/strong", messages=[], tools=[], timeout=10,
+    )
+    assert turn["content"] == "готово" and calls["n"] == 2
+
+    calls["n"] = 0
+    responses[1] = responses[0]
+    with pytest.raises(Exception, match="finish_reason=length"):
+        OpenRouterClient(config).complete_tools(
+            model="fake/strong", messages=[], tools=[], timeout=10,
+        )

@@ -24,12 +24,17 @@ offline-тестов: счётчик не хранит payload/ключи и н�
 `llm_client_quota`, `llm_global_budget`, `heavy_concurrency`), без IP, NL-текста,
 проекта или секретов.
 
-На Vercel значение по умолчанию — `disabled`: при наличии ключа live-LLM fail-closed
-с `503 llm_admission_not_configured`, а детерминированные endpoints и fallback без
-ключа продолжают работать. Включение live-LLM — ручной production stop-gate владельца:
-сначала настроить и проверить Vercel Firewall rate-limit для LLM-путей по IP (и общий
-лимит `/api/`), затем только явно выбрать поддерживаемую распределённую политику.
-Процессный счётчик для этого запрещён.
+Кодовое значение по умолчанию на Vercel — `disabled`: при наличии ключа live-LLM
+fail-closed с `503 llm_admission_not_configured`, а детерминированные endpoints и
+fallback без ключа продолжают работать. Включение live-LLM — ручной stop-gate
+владельца.
+
+Решение владельца (август 2026): для этого деплоя live-LLM включён явно — `vercel.json`
+задаёт `ELECTRICOPILOT_LLM_ADMISSION_MODE=local`. Кодовый default остаётся fail-closed
+для любых других деплоев без этой переменной. Оконная квота клиента и процессный бюджет
+понимаются как best-effort защита в пределах одного инстанса, а не распределённый лимит;
+Vercel Firewall rate-limit для LLM-путей остаётся рекомендованным периметром сверху.
+Текущий режим виден в `/api/health` как `llm_admission`.
 
 ## Эксплуатация
 

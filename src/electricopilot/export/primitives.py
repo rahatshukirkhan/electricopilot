@@ -63,7 +63,7 @@ class Text:
     layer: Layer = "TEXT"
     anchor: Anchor = "start"
     rotation: float = 0.0  # degrees CCW
-    color: str = "#0b1220"  # SVG stroke/fill; DXF uses layer color
+    color: str = "#1C2536"  # --ink (design-v2-spec §3); SVG stroke/fill; DXF uses layer color
 
 
 Primitive = Union[Line, Polyline, Rect, Circle, Text]
